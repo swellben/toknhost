@@ -471,26 +471,63 @@ const BOOTSTRAP_PATH_TO_VAR: Record<string, string> = {
 };
 
 /**
+ * Bootstrap-specific value resolution. Two real bugs found via an actual
+ * Sass compile (not just inspection), both fixed here:
+ *
+ *  1. Color: hex, never oklch. Bootstrap's own SCSS source calls Sass-native
+ *     color functions internally — shade-color()/tint-color() (used to
+ *     generate -subtle/-emphasis variants and hover states) call Sass's
+ *     built-in mix(), which throws "$color2: oklch(...) is not a color" on
+ *     an opaque CSS function string. Unlike Tailwind v4/shadcn (which just
+ *     pass custom properties through for the browser to parse at paint
+ *     time), Sass compiles ahead-of-time and needs a value it can parse.
+ *
+ *  2. Dimension: rem, never px (except breakpoints — see presentBootstrap).
+ *     Bootstrap's internal arithmetic mixes our values with its own
+ *     rem-based defaults, e.g. `$nav-link-height: $font-size-base *
+ *     $line-height-base + $nav-link-padding-y * 2` — if $font-size-base is
+ *     16px, that multiplication yields 24px, which then fails to add to
+ *     $nav-link-padding-y (rem) with "incompatible units". Bootstrap's own
+ *     _variables.scss defaults are rem throughout for this exact reason.
+ */
+function toBootstrapValue(type: string, value: unknown): string | null {
+  if (type === "color" && value && typeof value === "object" && "hex" in value) {
+    return String((value as { hex: unknown }).hex);
+  }
+  if (type === "dimension" && value && typeof value === "object" && "value" in value) {
+    const v = value as { value: number; unit?: string };
+    if (v.unit === "px") return `${v.value / 16}rem`;
+  }
+  return toCssValue(type, value);
+}
+
+/**
  * Presents tokens as Bootstrap SCSS variables ($name: value;). Well-known
  * roles get Bootstrap's own variable names; breakpoints are additionally
  * collected into the `$grid-breakpoints` map (via `document`) since
- * Bootstrap expects that as a single SCSS map, not individual variables.
+ * Bootstrap expects that as a single SCSS map, not individual variables —
+ * and, per a real Sass compile error, the map must be sorted ascending by
+ * value and start at 0 (Bootstrap asserts both at compile time). Breakpoints
+ * stay in px, unlike other dimensions above — Bootstrap's own default
+ * $grid-breakpoints map is px-based, not rem.
  */
 function presentBootstrap(tokens: ResolvedToken[]): PresentedTokens {
   const variables: Record<string, string> = {};
-  const breakpoints: Record<string, string> = {};
+  const breakpoints: { key: string; px: number }[] = [];
   const unmapped: string[] = [];
 
   for (const token of tokens) {
-    const value = toCssValue(token.type, token.value);
-    if (value === null) {
-      unmapped.push(token.path);
+    if (token.category === "breakpoint") {
+      const px = toCssValue(token.type, token.value);
+      const pxNum = px ? parseFloat(px) : NaN;
+      if (Number.isNaN(pxNum)) { unmapped.push(token.path); continue; }
+      breakpoints.push({ key: token.path.split(".").slice(1).join("-"), px: pxNum });
       continue;
     }
 
-    if (token.category === "breakpoint") {
-      const key = token.path.split(".").slice(1).join("-");
-      breakpoints[key] = value;
+    const value = toBootstrapValue(token.type, token.value);
+    if (value === null) {
+      unmapped.push(token.path);
       continue;
     }
 
@@ -505,7 +542,14 @@ function presentBootstrap(tokens: ResolvedToken[]): PresentedTokens {
     variables[varName] = value;
   }
 
-  const document = Object.keys(breakpoints).length ? { gridBreakpoints: breakpoints } : undefined;
+  let document: { gridBreakpoints: Record<string, string> } | undefined;
+  if (breakpoints.length) {
+    breakpoints.sort((a, b) => a.px - b.px);
+    const sortedMap: Record<string, string> = {};
+    if (breakpoints[0]!.px > 0) sortedMap.xs = "0";
+    for (const { key, px } of breakpoints) sortedMap[key] = `${px}px`;
+    document = { gridBreakpoints: sortedMap };
+  }
   return { framework: "bootstrap", variables, document, unmapped };
 }
 

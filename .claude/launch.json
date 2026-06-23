@@ -20,6 +20,12 @@
       "runtimeArgs": ["run", "dev", "--", "-p", "3020"],
       "cwd": ".scratch-tw-pure-test",
       "port": 3020
+    },
+    {
+      "name": "scratch-bootstrap-test",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-l", "3030", ".scratch-bootstrap-test"],
+      "port": 3030
     }
   ]
 }
