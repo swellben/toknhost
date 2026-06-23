@@ -59,6 +59,17 @@ function corsHeaders() {
  * given). Shared by both the GET REST route and the POST tools/call
  * `get_tokens`/`get_theme` handlers below — same data, same shaping logic,
  * just two different transports wrapping it.
+ *
+ * Mode-agnostic resolution: every category except `color` (font-family,
+ * spacing, border-radius, font-size, shadows, etc.) is treated as having
+ * ONE value shared across all modes, never a per-mode value — fonts,
+ * spacing, and radii don't change between light and dark. Import/gap-fill
+ * bugs have occasionally written divergent per-mode rows anyway (e.g. light
+ * mode getting one font, dark mode independently getting a different one).
+ * Rather than serving that drift, this always resolves non-color tokens to
+ * one canonical value (preferring the default mode's row, falling back to
+ * whichever mode has one) and uses that SAME value for every output mode.
+ * Only `color` tokens are read per-mode, since those genuinely differ.
  */
 async function getPresentedTheme(
   supabase: ReturnType<typeof createClient>,
@@ -76,28 +87,43 @@ async function getPresentedTheme(
     return { error: "No tokens found — import and gap-fill this design system first." };
   }
 
+  const { data: allValues } = await supabase
+    .from("token_values")
+    .select("token_id, mode_id, value, is_alias, alias_path")
+    .in("token_id", tokens.map((t) => t.id));
+
+  const valuesByToken = new Map<string, typeof allValues>();
+  for (const v of allValues ?? []) {
+    if (!valuesByToken.has(v.token_id)) valuesByToken.set(v.token_id, []);
+    valuesByToken.get(v.token_id)!.push(v);
+  }
+
+  const defaultMode = modes.find((m) => m.is_default) ?? modes[0];
+  const canonicalByToken = new Map<string, NonNullable<typeof allValues>[number]>();
+  for (const t of tokens) {
+    const rows = valuesByToken.get(t.id) ?? [];
+    const canonical = rows.find((r) => r.mode_id === defaultMode?.id) ?? rows[0];
+    if (canonical) canonicalByToken.set(t.id, canonical);
+  }
+
   const targetModes = modeFilter
     ? [modes.find((m) => m.name === modeFilter) ?? modes.find((m) => m.is_default) ?? modes[0]]
     : modes;
 
   const byMode: Record<string, unknown> = {};
   for (const mode of targetModes) {
-    const { data: values } = await supabase
-      .from("token_values")
-      .select("token_id, value, is_alias, alias_path")
-      .eq("mode_id", mode.id)
-      .in("token_id", tokens.map((t) => t.id));
-
-    const valueByTokenId = new Map((values ?? []).map((v) => [v.token_id, v]));
     const raw: RawTokenValue[] = tokens.map((t) => {
-      const v = valueByTokenId.get(t.id);
+      const isModeAgnostic = t.category !== "color";
+      const row = isModeAgnostic
+        ? canonicalByToken.get(t.id)
+        : (valuesByToken.get(t.id) ?? []).find((r) => r.mode_id === mode.id);
       return {
         path: t.path,
         category: t.category,
         type: t.type,
-        value: v?.value ?? null,
-        isAlias: v?.is_alias ?? false,
-        aliasPath: v?.alias_path ?? null,
+        value: row?.value ?? null,
+        isAlias: row?.is_alias ?? false,
+        aliasPath: row?.alias_path ?? null,
       };
     });
     byMode[mode.name] = presentTokens(resolveAliases(raw), framework);
