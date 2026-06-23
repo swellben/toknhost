@@ -1,0 +1,170 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-dm-sans);
+  --font-mono: var(--font-dm-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* App-specific extensions to the Shadcn palette — values the SaaS UI
+   * color palette defines that don't have a slot in Shadcn's default 29
+   * variables. Exposed as real Tailwind utilities (bg-primary-hover,
+   * text-disabled, text-success) so components never need to hardcode
+   * a hex value to reach for them. */
+  --color-primary-hover: var(--primary-hover);
+  --color-disabled: var(--disabled);
+  --color-success: var(--success);
+}
+
+/* Single palette — see "SaaS UI Color Palette / Dark Mode / Neutral
+ * Charcoals". The app is dark-only (see layout.tsx, html.dark is always
+ * applied), so :root and .dark intentionally carry the same values:
+ * :root is the fallback if that class were ever absent (e.g. an SSR
+ * flash), .dark is what's actually active. */
+:root {
+  --background: #121212; /* Main Background — foundational UI background */
+  --foreground: #e0e0e0; /* Typography: High Contrast — headings, labels */
+  --card: #1e1e1e; /* Surface — elevated panels, cards, menus */
+  --card-foreground: #e0e0e0;
+  --popover: #1e1e1e; /* Surface */
+  --popover-foreground: #e0e0e0;
+  --primary: #305c90; /* Primary Action — main interaction, buttons, active links */
+  --primary-foreground: #e0e0e0;
+  --primary-hover: #4a7fbb; /* Action: Hover/Active — lighter shade of Primary Action */
+  --secondary: #1e1e1e; /* Surface, used as a secondary button surface */
+  --secondary-foreground: #e0e0e0;
+  --muted: #1e1e1e; /* Surface */
+  --muted-foreground: #a0a0a0; /* Typography: Secondary — descriptions, icons */
+  --disabled: #606060; /* Disabled/Hint — inactive elements, hint backgrounds */
+  --accent: #2d2d2d; /* Border/Divider, reused as the neutral hover surface */
+  --accent-foreground: #e0e0e0;
+  --destructive: oklch(0.704 0.191 22.216); /* not part of this palette — kept from the Shadcn default */
+  --success: #4ade80; /* not part of this palette — needed for pass/fail indicators */
+  --border: #2d2d2d; /* Border/Divider — subtle UI borders, lines, separation */
+  --input: #2d2d2d;
+  --ring: #4a7fbb; /* Action: Hover/Active, reused as the focus ring color */
+  --chart-1: #305c90;
+  --chart-2: #4a7fbb;
+  --chart-3: #a0a0a0;
+  --chart-4: #606060;
+  --chart-5: #e0e0e0;
+  --radius: 0.625rem;
+  --sidebar: #1e1e1e; /* Surface */
+  --sidebar-foreground: #e0e0e0;
+  --sidebar-primary: #305c90;
+  --sidebar-primary-foreground: #e0e0e0;
+  --sidebar-accent: #2d2d2d;
+  --sidebar-accent-foreground: #e0e0e0;
+  --sidebar-border: #2d2d2d;
+  --sidebar-ring: #4a7fbb;
+}
+
+.dark {
+  --background: #121212;
+  --foreground: #e0e0e0;
+  --card: #1e1e1e;
+  --card-foreground: #e0e0e0;
+  --popover: #1e1e1e;
+  --popover-foreground: #e0e0e0;
+  --primary: #305c90;
+  --primary-foreground: #e0e0e0;
+  --primary-hover: #4a7fbb;
+  --secondary: #1e1e1e;
+  --secondary-foreground: #e0e0e0;
+  --muted: #1e1e1e;
+  --muted-foreground: #a0a0a0;
+  --disabled: #606060;
+  --accent: #2d2d2d;
+  --accent-foreground: #e0e0e0;
+  --destructive: oklch(0.704 0.191 22.216);
+  --success: #4ade80;
+  --border: #2d2d2d;
+  --input: #2d2d2d;
+  --ring: #4a7fbb;
+  --chart-1: #305c90;
+  --chart-2: #4a7fbb;
+  --chart-3: #a0a0a0;
+  --chart-4: #606060;
+  --chart-5: #e0e0e0;
+  --sidebar: #1e1e1e;
+  --sidebar-foreground: #e0e0e0;
+  --sidebar-primary: #305c90;
+  --sidebar-primary-foreground: #e0e0e0;
+  --sidebar-accent: #2d2d2d;
+  --sidebar-accent-foreground: #e0e0e0;
+  --sidebar-border: #2d2d2d;
+  --sidebar-ring: #4a7fbb;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* Token editor color swatches (<input type="color">) — the browser's UA
+ * stylesheet adds internal padding/border around the swatch itself that
+ * Tailwind's arbitrary variants don't fully override, leaving a visible
+ * gap between the swatch and the color it represents. Force it flush. */
+input[type="color"] {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  padding: 0;
+}
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+input[type="color"]::-webkit-color-swatch {
+  border: none;
+}
+input[type="color"]::-moz-color-swatch {
+  border: none;
+}

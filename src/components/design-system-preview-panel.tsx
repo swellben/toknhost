@@ -1,0 +1,70 @@
+"use client";
+
+import { useState } from "react";
+import { DesignSystemPreview } from "@/components/design-system-preview";
+import { useTheme, type ThemeByMode } from "@/components/theme-context";
+
+// Font/typography tokens are not mode-specific — they should be identical in
+// every mode. If dark mode variables happen to be missing them (e.g. because
+// they were only written under the light mode key), borrow from any mode that
+// has them so the preview always renders the correct typeface.
+const SHARED_VARS = [
+  "--font-family-base", "--font-size-base", "--font-size-sm", "--font-size-lg", "--font-size-xl", "--font-size-2xl",
+  "--border-radius-base",  // mode-agnostic — dark mode must inherit from donor
+];
+
+function withSharedVars(byMode: ThemeByMode, activeMode: string): Record<string, string> {
+  const active = byMode[activeMode]?.variables ?? {};
+  const donor = Object.values(byMode).find((m) => m.variables["--font-family-base"]);
+  if (!donor) return active;
+  const merged: Record<string, string> = { ...active };
+  // Font tokens are mode-agnostic — always use the donor's value so a stale
+  // dark-mode entry (from an earlier run with a different font) doesn't win.
+  for (const key of SHARED_VARS) {
+    if (donor.variables[key]) merged[key] = donor.variables[key];
+  }
+  return merged;
+}
+
+export function DesignSystemPreviewPanel({ defaultMode }: { defaultMode: string }) {
+  const { byMode } = useTheme();
+  const modeNames = byMode ? Object.keys(byMode) : [];
+
+  const [preferredMode, setPreferredMode] = useState<string | null>(null);
+
+  const activeMode =
+    (preferredMode && byMode?.[preferredMode] ? preferredMode : null) ??
+    (byMode?.[defaultMode] ? defaultMode : null) ??
+    modeNames[0] ??
+    null;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-muted-foreground">Live preview</h2>
+        {modeNames.length > 1 && (
+          <div className="flex gap-1 rounded-md bg-muted p-1">
+            {modeNames.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setPreferredMode(m)}
+                className={`rounded-sm px-2 py-1 text-xs capitalize ${
+                  activeMode === m
+                    ? "bg-background font-medium text-foreground shadow-sm"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <DesignSystemPreview
+        variables={activeMode && byMode ? withSharedVars(byMode, activeMode) : null}
+      />
+    </div>
+  );
+}
