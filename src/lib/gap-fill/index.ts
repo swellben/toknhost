@@ -65,6 +65,34 @@ function hexOf(value: unknown): string | null {
 const SCALE_SUFFIX_RE =
   /\.(50|100|200|300|400|500|600|700|800|900|950|foreground)$/;
 
+// Flat single-value semantic role colors that must NEVER get a generated
+// 50–950 scale, even though they pass the SCALE_SUFFIX_RE check (their path
+// doesn't end in a scale-step suffix) and have a resolvable hex value. These
+// are shadcn-required roles (section 4c below) — shadcn has no concept of
+// e.g. "ring-500" or "chart-1-200", so generating one is pure noise, and
+// previously caused a real bug: running gap-fill twice produced ~150 spurious
+// extra color tokens (card.50..950, ring.50..950, etc.) because this set
+// didn't exist yet. Color roles that DO get a real scale (primary, secondary,
+// background, foreground, muted, border, success, warning, danger) are not
+// listed here on purpose.
+const NON_SCALE_COLOR_ROOTS = new Set([
+  "color.card",
+  "color.popover",
+  "color.accent",
+  "color.input",
+  "color.ring",
+  "color.chart.1",
+  "color.chart.2",
+  "color.chart.3",
+  "color.chart.4",
+  "color.chart.5",
+  "color.sidebar",
+  "color.sidebar.primary",
+  "color.sidebar.accent",
+  "color.sidebar.border",
+  "color.sidebar.ring",
+]);
+
 /**
  * Computes everything missing from an imported token set, per the
  * derivation table in CLAUDE.md "Gap-Fill: What Gets Derived From What".
@@ -81,12 +109,15 @@ export function computeGapFill(existing: ExistingToken[]): DerivedToken[] {
 
   // 1. Full 50–950 scale + *-foreground for every imported base color that
   // doesn't already have one (skip tokens that already look like a
-  // generated scale step or foreground, to avoid scaling a scale).
+  // generated scale step or foreground, to avoid scaling a scale, and skip
+  // known flat shadcn-role colors that should never get one — see
+  // NON_SCALE_COLOR_ROOTS above).
   const baseColors = existing.filter(
     (t) =>
       t.category === "color" &&
       t.type === "color" &&
       !SCALE_SUFFIX_RE.test(t.path) &&
+      !NON_SCALE_COLOR_ROOTS.has(t.path) &&
       hexOf(t.value)
   );
 
