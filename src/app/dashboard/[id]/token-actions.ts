@@ -8,10 +8,78 @@ import {
   parseDimensionPx,
   stringValue,
 } from "@/lib/parsers/shared";
+import { materialColorScale } from "@/lib/gap-fill/material";
+import { aestheticForeground, hexToOklch, toOklchString } from "@/lib/gap-fill/oklch";
 import type { TokenType, TokenValueShape } from "@/types/tokens";
 import type { Json } from "@/types/supabase";
 
 export type UpdateTokenResult = { error: string } | { success: true } | void;
+
+const SCALE_STEPS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+
+function colorValue(hex: string): TokenValueShape {
+  const { l, c, h } = hexToOklch(hex);
+  return { hex, oklch: toOklchString(l, c, h), space: "oklch" };
+}
+
+/**
+ * Regenerates a base color's 50–950 scale + foreground in the SAME mode
+ * that was just edited, if a scale already exists for it. Fixes a real bug:
+ * editing color.primary's swatch previously left color.primary.50..950
+ * silently stale (wrong hue entirely), since nothing recomputed the scale
+ * from the new seed — found live on master-reference, where the scale was
+ * still blue after the base was edited to green days earlier.
+ *
+ * Deliberately scoped to the SAME mode only — does not touch the other
+ * mode's scale, since cross-mode propagation is a separate, bigger design
+ * decision (would risk clobbering an intentionally-customized dark mode)
+ * that hasn't been asked for. This only fixes the proven same-mode drift.
+ */
+async function regenerateScaleIfNeeded(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  designSystemId: string,
+  editedPath: string,
+  editedCategory: string,
+  editedType: string,
+  modeId: string,
+  newHex: string
+): Promise<{ error: string } | void> {
+  if (editedCategory !== "color" || editedType !== "color") return;
+  // Only base colors get regenerated — a path ending in a scale-step suffix
+  // or "foreground" IS a scale member, not a base; editing one shouldn't
+  // regenerate anything.
+  if (/\.(50|100|200|300|400|500|600|700|800|900|950|foreground)$/.test(editedPath)) return;
+
+  const scalePaths = SCALE_STEPS.map((step) => `${editedPath}.${step}`);
+  const foregroundPath = `${editedPath}.foreground`;
+
+  const { data: scaleTokens, error: scaleError } = await supabase
+    .from("tokens")
+    .select("id, path")
+    .eq("design_system_id", designSystemId)
+    .in("path", [...scalePaths, foregroundPath]);
+  if (scaleError) return { error: scaleError.message };
+  if (!scaleTokens?.length) return; // no existing scale — nothing to keep in sync
+
+  const scale = materialColorScale(newHex);
+  const foregroundHex = aestheticForeground(newHex);
+
+  const rows = scaleTokens.map((t) => {
+    const stepMatch = t.path.match(/\.(\d+)$/);
+    const hex = stepMatch ? scale[Number(stepMatch[1])] : foregroundHex;
+    return {
+      token_id: t.id,
+      mode_id: modeId,
+      value: colorValue(hex) as unknown as Json,
+      is_alias: false,
+    };
+  });
+
+  const { error: upsertError } = await supabase
+    .from("token_values")
+    .upsert(rows, { onConflict: "token_id,mode_id" });
+  if (upsertError) return { error: upsertError.message };
+}
 
 /** Parses whatever the editor's input produced back into our canonical
  * JSONB value shape, based on the token's type. Mirrors the parsing
@@ -54,6 +122,13 @@ export async function updateTokenValue(
 
   const supabase = await createClient();
 
+  const { data: tokenRow, error: tokenLookupError } = await supabase
+    .from("tokens")
+    .select("path, category")
+    .eq("id", tokenId)
+    .single();
+  if (tokenLookupError) return { error: tokenLookupError.message };
+
   const { error: valueError } = await supabase
     .from("token_values")
     .upsert(
@@ -76,6 +151,20 @@ export async function updateTokenValue(
     .eq("id", tokenId);
 
   if (tokenError) return { error: tokenError.message };
+
+  const newHex = (value as { hex?: string }).hex;
+  if (newHex) {
+    const scaleResult = await regenerateScaleIfNeeded(
+      supabase,
+      designSystemId,
+      tokenRow.path,
+      tokenRow.category,
+      type,
+      modeId,
+      newHex
+    );
+    if (scaleResult && "error" in scaleResult) return scaleResult;
+  }
 
   revalidatePath(`/dashboard/${designSystemId}`);
   return { success: true };
