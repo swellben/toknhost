@@ -6,6 +6,24 @@ import {
   DEFAULT_SPACING_PX,
   DEFAULT_RADIUS_PX,
   DEFAULT_BREAKPOINTS_PX,
+  DEFAULT_FONT_WEIGHT,
+  DEFAULT_LINE_HEIGHT,
+  DEFAULT_LETTER_SPACING_PX,
+  DEFAULT_PARAGRAPH_SPACING_REM,
+  DEFAULT_TEXT_DECORATION,
+  DEFAULT_TEXT_TRANSFORM,
+  DEFAULT_BORDER_WIDTH_PX,
+  DEFAULT_BORDER_STYLE,
+  DEFAULT_OPACITY,
+  DEFAULT_Z_INDEX,
+  DEFAULT_DURATION_MS,
+  DEFAULT_EASING,
+  DEFAULT_ANIMATION,
+  DEFAULT_SIZING_PX,
+  DEFAULT_COMPONENT_PX,
+  DEFAULT_SHADOW,
+  DEFAULT_DROP_SHADOW,
+  DEFAULT_TEXT_SHADOW,
 } from "./scales";
 import { materialSurfaces } from "./material";
 
@@ -159,9 +177,11 @@ export function computeGapFill(existing: ExistingToken[]): DerivedToken[] {
     warning: { h:  75, l: 0.75, c: 0.16 }, // amber — yellows need higher L to not look greenish
     danger:  { h:  25, l: 0.55, c: 0.22 }, // vivid red-orange
   };
+  const semanticHexes: Record<string, string> = {};
   for (const [name, { h, l, c }] of Object.entries(SEMANTIC_DEFAULTS)) {
     const path = `color.${name}`;
     const semanticHex = oklchToHex(l, c, h);
+    semanticHexes[name] = hexOf(existing.find((t) => t.path === path)?.value) ?? semanticHex;
     if (!existingPaths.has(path)) {
       derived.push({
         path,
@@ -188,17 +208,61 @@ export function computeGapFill(existing: ExistingToken[]): DerivedToken[] {
 
   // 4b. muted foreground — text that sits on a muted background (e.g. badges,
   // helper text areas). Derived from muted's hex so it always passes AA.
+  const mutedHex =
+    hexOf(existing.find((t) => t.path === "color.muted")?.value) ?? surfaces.light.muted;
+  const mutedForegroundHex = aestheticForeground(mutedHex);
   if (!existingPaths.has("color.muted.foreground")) {
-    const mutedHex =
-      hexOf(existing.find((t) => t.path === "color.muted")?.value) ??
-      surfaces.light.muted;
     derived.push({
       path: "color.muted.foreground",
       category: "color",
       type: "color",
-      value: colorValue(aestheticForeground(mutedHex)),
+      value: colorValue(mutedForegroundHex),
       provenance: "derived",
     });
+  }
+
+  // 4c. shadcn-required semantic color roles (card, popover, accent, input,
+  // ring, chart.1-5, sidebar.*) — these have no equivalent in any other
+  // target framework, but shadcn's own theme structurally requires them, so
+  // without this every shadcn-targeted design system silently falls back to
+  // shadcn's library defaults for ~21 colors instead of the brand's own.
+  // Derived from already-resolved roles (background/muted/border/primary/
+  // secondary/semantic), same approach used to backfill the master-reference
+  // fixture by hand earlier — never invents a new hue.
+  const primaryForegroundHex =
+    hexOf(existing.find((t) => t.path === "color.primary.foreground")?.value) ??
+    aestheticForeground(primarySeedHex);
+  const secondarySeedHex = hexOf(
+    baseColors.find((t) => t.path === "color.secondary")?.value
+  );
+
+  const SHADCN_ROLE_DEFAULTS: [path: string, hex: string][] = [
+    ["color.card", surfaces.light.background],
+    ["color.card.foreground", surfaces.light.foreground],
+    ["color.popover", surfaces.light.background],
+    ["color.popover.foreground", surfaces.light.foreground],
+    ["color.accent", mutedHex],
+    ["color.accent.foreground", mutedForegroundHex],
+    ["color.input", surfaces.light.border],
+    ["color.ring", primarySeedHex],
+    ["color.chart.1", primarySeedHex],
+    ["color.chart.2", secondarySeedHex ?? primarySeedHex],
+    ["color.chart.3", semanticHexes.success],
+    ["color.chart.4", semanticHexes.warning],
+    ["color.chart.5", semanticHexes.danger],
+    ["color.sidebar", mutedHex],
+    ["color.sidebar.foreground", surfaces.light.foreground],
+    ["color.sidebar.primary", primarySeedHex],
+    ["color.sidebar.primary.foreground", primaryForegroundHex],
+    ["color.sidebar.accent", mutedHex],
+    ["color.sidebar.accent.foreground", mutedForegroundHex],
+    ["color.sidebar.border", surfaces.light.border],
+    ["color.sidebar.ring", primarySeedHex],
+  ];
+  for (const [path, hex] of SHADCN_ROLE_DEFAULTS) {
+    if (!existingPaths.has(path)) {
+      derived.push({ path, category: "color", type: "color", value: colorValue(hex), provenance: "defaulted" });
+    }
   }
 
   // 5. Typography scale — only if the design system has no font-size
@@ -252,6 +316,151 @@ export function computeGapFill(existing: ExistingToken[]): DerivedToken[] {
         value: dimensionValue(px),
         provenance: "defaulted",
       });
+    }
+  }
+
+  // 9. Font family — only if nothing was imported at all. Mirrors the
+  // "Inter, industry-standard SaaS sans-serif" default used by Quick Start
+  // (src/app/dashboard/[id]/actions.ts), for the paste-import path that
+  // doesn't go through Quick Start's own font field.
+  if (!hasAnyOf("font-family")) {
+    derived.push({
+      path: "font-family.base",
+      category: "font-family",
+      type: "fontFamily",
+      value: { primary: "Inter", stack: ["Inter", "sans-serif"] } as unknown as TokenValueShape,
+      provenance: "defaulted",
+    });
+  }
+
+  // 10. Font weight, line height, letter spacing, paragraph spacing —
+  // fixed scales, same convention as spacing/radius/breakpoints above.
+  if (!hasAnyOf("font-weight")) {
+    for (const [name, value] of Object.entries(DEFAULT_FONT_WEIGHT)) {
+      derived.push({ path: `font-weight.${name}`, category: "font-weight", type: "fontWeight", value: { value }, provenance: "defaulted" });
+    }
+  }
+  if (!hasAnyOf("line-height")) {
+    for (const [name, value] of Object.entries(DEFAULT_LINE_HEIGHT)) {
+      derived.push({ path: `line-height.${name}`, category: "line-height", type: "number", value: { value }, provenance: "defaulted" });
+    }
+  }
+  if (!hasAnyOf("letter-spacing")) {
+    for (const [name, px] of Object.entries(DEFAULT_LETTER_SPACING_PX)) {
+      derived.push({ path: `letter-spacing.${name}`, category: "letter-spacing", type: "dimension", value: dimensionValue(px), provenance: "defaulted" });
+    }
+  }
+  if (!hasAnyOf("paragraph-spacing")) {
+    for (const [name, rem] of Object.entries(DEFAULT_PARAGRAPH_SPACING_REM)) {
+      derived.push({ path: `paragraph-spacing.${name}`, category: "paragraph-spacing", type: "dimension", value: { value: rem, unit: "rem" }, provenance: "defaulted" });
+    }
+  }
+
+  // 11. Text decoration / transform — fixed string defaults.
+  if (!hasAnyOf("text-decoration")) {
+    for (const [name, value] of Object.entries(DEFAULT_TEXT_DECORATION)) {
+      derived.push({ path: `text-decoration.${name}`, category: "text-decoration", type: "string", value: { value }, provenance: "defaulted" });
+    }
+  }
+  if (!hasAnyOf("text-transform")) {
+    for (const [name, value] of Object.entries(DEFAULT_TEXT_TRANSFORM)) {
+      derived.push({ path: `text-transform.${name}`, category: "text-transform", type: "string", value: { value }, provenance: "defaulted" });
+    }
+  }
+
+  // 12. Shadows — fixed black-at-low-alpha defaults, same shape used by
+  // master-reference. Not hue-tinted; kept simple and broadly applicable.
+  if (!hasAnyOf("shadow")) {
+    for (const [name, layers] of Object.entries(DEFAULT_SHADOW)) {
+      derived.push({ path: `shadow.${name}`, category: "shadow", type: "shadow", value: { layers }, provenance: "defaulted" });
+    }
+  }
+  if (!hasAnyOf("drop-shadow")) {
+    for (const [name, layers] of Object.entries(DEFAULT_DROP_SHADOW)) {
+      derived.push({ path: `drop-shadow.${name}`, category: "drop-shadow", type: "shadow", value: { layers }, provenance: "defaulted" });
+    }
+  }
+  if (!hasAnyOf("text-shadow")) {
+    for (const [name, layers] of Object.entries(DEFAULT_TEXT_SHADOW)) {
+      derived.push({ path: `text-shadow.${name}`, category: "text-shadow", type: "shadow", value: { layers }, provenance: "defaulted" });
+    }
+  }
+
+  // 13. Border width / style / composite default — composite derives its
+  // color from color.border so it stays visually consistent with whatever
+  // border color the design system actually has (imported or just derived).
+  if (!hasAnyOf("border-width")) {
+    for (const [name, px] of Object.entries(DEFAULT_BORDER_WIDTH_PX)) {
+      derived.push({ path: `border-width.${name}`, category: "border-width", type: "dimension", value: dimensionValue(px), provenance: "defaulted" });
+    }
+  }
+  if (!hasAnyOf("border-style")) {
+    for (const [name, value] of Object.entries(DEFAULT_BORDER_STYLE)) {
+      derived.push({ path: `border-style.${name}`, category: "border-style", type: "string", value: { value }, provenance: "defaulted" });
+    }
+  }
+  if (!hasAnyOf("border")) {
+    const borderHex = hexOf(existing.find((t) => t.path === "color.border")?.value) ?? surfaces.light.border;
+    derived.push({
+      path: "border.default",
+      category: "border",
+      type: "border",
+      value: { color: borderHex, width: { value: DEFAULT_BORDER_WIDTH_PX.thin, unit: "px" }, style: DEFAULT_BORDER_STYLE.solid },
+      provenance: "defaulted",
+    });
+  }
+
+  // 14. Opacity, z-index, duration, easing, transition, animation — fixed
+  // utility scales with no color/seed dependency.
+  if (!hasAnyOf("opacity")) {
+    for (const [name, value] of Object.entries(DEFAULT_OPACITY)) {
+      derived.push({ path: `opacity.${name}`, category: "opacity", type: "number", value: { value }, provenance: "defaulted" });
+    }
+  }
+  if (!hasAnyOf("z-index")) {
+    for (const [name, value] of Object.entries(DEFAULT_Z_INDEX)) {
+      derived.push({ path: `z-index.${name}`, category: "z-index", type: "number", value: { value }, provenance: "defaulted" });
+    }
+  }
+  if (!hasAnyOf("duration")) {
+    for (const [name, ms] of Object.entries(DEFAULT_DURATION_MS)) {
+      derived.push({ path: `duration.${name}`, category: "duration", type: "duration", value: { value: ms, unit: "ms" }, provenance: "defaulted" });
+    }
+  }
+  if (!hasAnyOf("easing")) {
+    for (const [name, bezier] of Object.entries(DEFAULT_EASING)) {
+      derived.push({ path: `easing.${name}`, category: "easing", type: "cubicBezier", value: bezier, provenance: "defaulted" });
+    }
+  }
+  if (!hasAnyOf("transition")) {
+    derived.push({
+      path: "transition.base",
+      category: "transition",
+      type: "transition",
+      value: {
+        duration: { value: DEFAULT_DURATION_MS.base, unit: "ms" },
+        delay: { value: 0, unit: "ms" },
+        timingFunction: DEFAULT_EASING["ease-in-out"],
+      },
+      provenance: "defaulted",
+    });
+  }
+  if (!hasAnyOf("animation")) {
+    for (const [name, value] of Object.entries(DEFAULT_ANIMATION)) {
+      derived.push({ path: `animation.${name}`, category: "animation", type: "string", value: { value }, provenance: "defaulted" });
+    }
+  }
+
+  // 15. Sizing / component — fixed dimension defaults for common UI element
+  // sizes (icons, avatars, buttons, inputs).
+  if (!hasAnyOf("sizing")) {
+    for (const [name, px] of Object.entries(DEFAULT_SIZING_PX)) {
+      derived.push({ path: `sizing.${name}`, category: "sizing", type: "dimension", value: dimensionValue(px), provenance: "defaulted" });
+    }
+  }
+  if (!hasAnyOf("component")) {
+    for (const [name, px] of Object.entries(DEFAULT_COMPONENT_PX)) {
+      derived.push({ path: `component.${name}`, category: "component", type: "dimension", value: dimensionValue(px), provenance: "defaulted" });
     }
   }
 
