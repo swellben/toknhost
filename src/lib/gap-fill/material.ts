@@ -57,21 +57,71 @@ function applyHueDrift(h: number, step: number): number {
   return ((h + drift) % 360 + 360) % 360;
 }
 
+const ANCHOR_INDEX = STEP_NAMES.indexOf(500); // 5
+const LIGHT_CEILING = 97;
+const DARK_FLOOR = 9;
+
 /**
- * Generates a 50–950 color scale from a seed hex.
- * Hue drifts slightly toward warm at light steps and blue-violet at dark steps,
- * mirroring how real pigments behave. Saturation envelope keeps tints vivid
- * and mid-tones full. Lightness targets are fixed across all hues.
+ * Generates a 50–950 color scale from a seed hex, anchored so step 500
+ * IS the seed color exactly — not just hue/saturation-matched at an
+ * independently-fixed lightness.
+ *
+ * Previously this only extracted hue+saturation from the seed and placed
+ * every step (including 500) on a fixed lightness ladder regardless of the
+ * seed's own lightness. That meant a real brand color almost never appeared
+ * anywhere in its own generated scale — e.g. a dark seed like #2a6500
+ * (~20% lightness) landed nowhere near step 500 (fixed at 50% lightness),
+ * closer to step 800 instead. Found live: an external AI tool (Lovable)
+ * consuming our MCP tokens used `bg-primary-500` for a primary button,
+ * reasonably expecting 500 to be "the base/main color" (the convention in
+ * Tailwind, Radix, Material, etc.) and got an unrelated bright lime green
+ * instead of the actual brand color.
+ *
+ * Fix: step 500 always uses the seed hex exactly. The other 10 steps are
+ * computed as before (same hue drift, same saturation envelope) but their
+ * lightness is now proportionally interpolated FROM the seed's own
+ * lightness toward a light ceiling (lighter steps) or dark floor (darker
+ * steps), preserving the original ramp's relative spacing/shape — rather
+ * than an absolute, seed-independent ladder.
+ *
+ * The ceiling/floor are pushed outward (never inward) to stay strictly
+ * above/below the seed's own lightness — NOT by clamping the seed's
+ * lightness itself away from its true value. An earlier version of this
+ * fix did the latter (clamped the anchor used for neighbor steps but kept
+ * step 500 at the literal unclamped seed), which broke monotonic ordering
+ * for extreme seeds: a near-white seed could end up LIGHTER at step 500
+ * than at step 400, since 400 was computed from a clamped, slightly-darker
+ * anchor. Expanding the ceiling/floor instead keeps every step computed
+ * from the exact same seed lightness, so the ramp can't invert.
  */
 export function materialColorScale(seedHex: string): Record<number, string> {
   const hsl = toHsl(seedHex);
   const h = hsl?.h ?? 0;
   const s = (hsl?.s ?? 0) * 100;  // culori 0–1 → 0–100
+  const seedL = (hsl?.l ?? 0.5) * 100;
+  const ceiling = Math.max(LIGHT_CEILING, seedL + 1);
+  const floor = Math.min(DARK_FLOOR, seedL - 1);
+
   const scale: Record<number, string> = {};
   STEP_NAMES.forEach((step, i) => {
-    const l = HSL_LIGHTNESS[i];
+    if (step === 500) {
+      scale[500] = seedHex.toLowerCase();
+      return;
+    }
     const sat = hslSatEnvelope(s, step);
     const hDrifted = applyHueDrift(h, step);
+
+    const l =
+      i < ANCHOR_INDEX
+        ? seedL +
+          ((HSL_LIGHTNESS[i] - HSL_LIGHTNESS[ANCHOR_INDEX]) /
+            (HSL_LIGHTNESS[0] - HSL_LIGHTNESS[ANCHOR_INDEX])) *
+            (ceiling - seedL)
+        : seedL -
+          ((HSL_LIGHTNESS[ANCHOR_INDEX] - HSL_LIGHTNESS[i]) /
+            (HSL_LIGHTNESS[ANCHOR_INDEX] - HSL_LIGHTNESS[HSL_LIGHTNESS.length - 1])) *
+            (seedL - floor);
+
     scale[step] = culoriFormatHex({ mode: "hsl", h: hDrifted, s: sat / 100, l: l / 100 })!;
   });
   return scale;
