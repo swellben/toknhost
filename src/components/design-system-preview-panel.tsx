@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { DesignSystemPreview } from "@/components/design-system-preview";
+import { ShadcnFrameworkPreview } from "@/components/shadcn-framework-preview";
 import { useTheme, type ThemeByMode } from "@/components/theme-context";
 
 // Font/typography tokens are not mode-specific — they should be identical in
@@ -26,11 +27,29 @@ function withSharedVars(byMode: ThemeByMode, activeMode: string): Record<string,
   return merged;
 }
 
-export function DesignSystemPreviewPanel({ defaultMode }: { defaultMode: string }) {
+// Frameworks with a real-component preview implementation. Pass 1 covers
+// these three (all pure CSS-variable, no build step needed); Bootstrap and
+// Tailwind v3 need real Sass/config compilation and are a deferred
+// fast-follow — see PIVOT-PLAN.md "Visual preview per target framework".
+const PREVIEW_FRAMEWORKS = [
+  { id: "css-variables", label: "Generic" },
+  { id: "shadcn", label: "shadcn" },
+] as const;
+
+export function DesignSystemPreviewPanel({
+  defaultMode,
+  shadcnByMode,
+}: {
+  defaultMode: string;
+  shadcnByMode: ThemeByMode | null;
+}) {
   const { byMode } = useTheme();
   const modeNames = byMode ? Object.keys(byMode) : [];
 
   const [preferredMode, setPreferredMode] = useState<string | null>(null);
+  const [framework, setFramework] = useState<(typeof PREVIEW_FRAMEWORKS)[number]["id"]>(
+    "css-variables"
+  );
 
   const activeMode =
     (preferredMode && byMode?.[preferredMode] ? preferredMode : null) ??
@@ -42,29 +61,53 @@ export function DesignSystemPreviewPanel({ defaultMode }: { defaultMode: string 
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-muted-foreground">Live preview</h2>
-        {modeNames.length > 1 && (
+        <div className="flex items-center gap-2">
           <div className="flex gap-1 rounded-md bg-muted p-1">
-            {modeNames.map((m) => (
+            {PREVIEW_FRAMEWORKS.map((f) => (
               <button
-                key={m}
+                key={f.id}
                 type="button"
-                onClick={() => setPreferredMode(m)}
-                className={`rounded-sm px-2 py-1 text-xs capitalize ${
-                  activeMode === m
+                onClick={() => setFramework(f.id)}
+                className={`rounded-sm px-2 py-1 text-xs ${
+                  framework === f.id
                     ? "bg-background font-medium text-foreground shadow-sm"
                     : "text-muted-foreground"
                 }`}
               >
-                {m}
+                {f.label}
               </button>
             ))}
           </div>
-        )}
+          {modeNames.length > 1 && (
+            <div className="flex gap-1 rounded-md bg-muted p-1">
+              {modeNames.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setPreferredMode(m)}
+                  className={`rounded-sm px-2 py-1 text-xs capitalize ${
+                    activeMode === m
+                      ? "bg-background font-medium text-foreground shadow-sm"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      <DesignSystemPreview
-        variables={activeMode && byMode ? withSharedVars(byMode, activeMode) : null}
-      />
+      {framework === "shadcn" ? (
+        <ShadcnFrameworkPreview
+          variables={activeMode && shadcnByMode ? shadcnByMode[activeMode]?.variables ?? null : null}
+        />
+      ) : (
+        <DesignSystemPreview
+          variables={activeMode && byMode ? withSharedVars(byMode, activeMode) : null}
+        />
+      )}
     </div>
   );
 }

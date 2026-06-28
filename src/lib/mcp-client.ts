@@ -62,7 +62,8 @@ export async function fetchPreviewTokens(
 export async function fetchPreviewTheme(
   slug: string,
   mcpToken: string,
-  isPublic: boolean
+  isPublic: boolean,
+  framework: string = "css-variables"
 ): Promise<Record<string, PreviewTokens> | null> {
   const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/design-system-mcp/${slug}`;
 
@@ -77,7 +78,7 @@ export async function fetchPreviewTheme(
         jsonrpc: "2.0",
         id: 1,
         method: "tools/call",
-        params: { name: "get_theme", arguments: { framework: "css-variables" } },
+        params: { name: "get_theme", arguments: { framework } },
       }),
       cache: "no-store",
     });

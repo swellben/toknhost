@@ -62,8 +62,10 @@ export default async function DesignSystemPage({
   const allModeIds = (modes ?? []).map((m) => m.id);
   const tokenIds = (tokens ?? []).map((t) => t.id);
 
-  // Batch 2: parallel — values, all-mode values, a11y, and preview fetch all at once
-  const [{ data: values }, { data: allValues }, { data: a11yChecks }, previewTheme] =
+  // Batch 2: parallel — values, all-mode values, a11y, and both preview
+  // fetches (css-variables + shadcn, for the framework-authentic preview)
+  // all at once.
+  const [{ data: values }, { data: allValues }, { data: a11yChecks }, previewTheme, previewThemeShadcn] =
     await Promise.all([
       activeMode && tokenIds.length
         ? supabase
@@ -88,6 +90,9 @@ export default async function DesignSystemPage({
         .order("contrast_ratio"),
       tokens?.length
         ? fetchPreviewTheme(ds.slug, ds.mcp_token, ds.is_public)
+        : Promise.resolve(null),
+      tokens?.length
+        ? fetchPreviewTheme(ds.slug, ds.mcp_token, ds.is_public, "shadcn")
         : Promise.resolve(null),
     ]);
 
@@ -335,9 +340,10 @@ export default async function DesignSystemPage({
         <CardHeader><CardTitle>Gap-fill</CardTitle></CardHeader>
         <CardContent className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground">
-            Derives full color scales, dark mode, accessible foregrounds, and missing
-            typography/spacing defaults — algorithmic (OKLCH), not AI. Automatically
-            validates and corrects contrast after running.
+            Derives full color scales using AI for an aesthetically refined palette,
+            plus dark mode, accessible foregrounds, and missing typography/spacing
+            defaults (algorithmic). Automatically validates and corrects contrast
+            after running.
           </p>
           <GapFillButton designSystemId={ds.id} />
         </CardContent>
@@ -484,6 +490,7 @@ export default async function DesignSystemPage({
           <div className="w-1/2 shrink-0 overflow-y-auto border-l pl-6">
             <DesignSystemPreviewPanel
               defaultMode={modes?.find((m) => m.is_default)?.name ?? "light"}
+              shadcnByMode={previewThemeShadcn}
             />
           </div>
         </div>
