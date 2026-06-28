@@ -1,5 +1,24 @@
 # MVP pivot plan — status & next steps
 
+## Status as of 2026-06-25 — start here
+
+**Fully built and verified** (real browser clicks, real API calls, real DB writes — not just code review):
+- All 4 V1 target frameworks proven through real consumers: css-variables, Tailwind v4, shadcn, Bootstrap (see "Already built" / ingestion-test entries below).
+- AI color-fill — replaces the deterministic color-scale step with a real Anthropic call (`src/lib/ai/color-fill.ts`), gated behind the new "Update design system" action, metered via `ai_usage` (25 calls/month). See "Open questions" → AI-fill entries for the full build/bug-fix history.
+- Freeform/unstructured-text ingestion — `src/lib/ai/freeform-ingest.ts`, "Describe it" tab, same 25/month metering pattern.
+- Visual preview, Pass 1, shadcn slice only — real shadcn/ui components re-themed live via CSS variable overrides, no build step. Tailwind v4/css-variables slices of Pass 1 NOT built yet; Pass 2 (Bootstrap/Tailwind v3, needs real Sass compile) not designed.
+- AI color-fill system prompt tuned for modern/tinted-neutral aesthetics (2026-06-25), verified with real calls.
+
+**Tried and explicitly reverted** (don't redo without new information): pushing the deterministic `success`/`warning`/`danger` semantic-color defaults more vivid — real contrast-ratio testing showed it regressed two of three from passing to failing AA as plain text on `color.background`. Original values are back in place.
+
+**Not yet built — pick up here:**
+1. Visual preview: Tailwind v4 + css-variables slices of Pass 1 (shadcn already proved the mechanism — same CSS-variable-override approach should work for plain Tailwind utility classes).
+2. Visual preview Pass 2: Bootstrap/Tailwind v3 (needs a real Sass-compile-on-demand server endpoint, caching/debounce strategy undesigned).
+3. Dirty-state UI signal — user has no visual cue that an edited color hasn't been committed via "Update design system" yet.
+4. "Run gap-fill" conditional visibility — should hide once nothing is missing; currently always shows.
+5. Product UI/chrome polish — direction only ("make it sexier"), needs a real scoping pass before it's buildable.
+6. Figma export and the "10 UX principles" — both explicitly deferred to V2, not V1 work.
+
 **Date started:** 2026-06-22
 **Why:** Spent a long session iterating on algorithmic color generation (OKLCH/HSL math in `src/lib/gap-fill/material.ts`) and a rich live-preview UI. User still wasn't happy with generated palette quality after several rounds of fixes. Root cause: "does this look good" is a subjective design judgment math alone can't resolve, and we never validated whether the underlying product (tokens served via MCP) actually works with real tools. Decision: pause generation-quality polish, de-scope the UI, and validate the core product loop first.
 
