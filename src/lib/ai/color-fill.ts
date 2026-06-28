@@ -89,7 +89,16 @@ export async function generateColorFill(
       "(near-white tint) to 950 (near-black shade), passing smoothly through the seed at 500. Keep hue " +
       "consistent with subtle, tasteful drift (slightly warmer in light tints, slightly cooler/more saturated " +
       "in dark shades is a common professional choice, but prioritize what looks best for this specific hue). " +
-      "Avoid muddy, over-desaturated, or garish steps. Every hex must be a 6-digit hex string starting with #.",
+      "Avoid muddy, over-desaturated, or garish steps. " +
+      "Tint the lightest and darkest steps with the seed's own hue rather than drifting toward neutral gray — " +
+      "step 50 should read as 'a whisper of this color,' not 'white with no color in it,' and step 950 should " +
+      "read as 'a deep, rich shade of this color,' not 'black with no color in it.' A scale that goes gray at " +
+      "the extremes looks dated and default; staying tinted all the way to the ends is what makes a scale feel " +
+      "premium and intentional rather than auto-generated. " +
+      "Favor contemporary, confident color choices over dated 2010s-era 'startup blue' flatness — current " +
+      "professional palettes lean toward either warmer, more tactile tones (terracotta, sage, warm sand) or " +
+      "richer, more saturated jewel/electric tones (deep indigo, carbon mint), depending on what the seed hue " +
+      "itself suggests. Every hex must be a 6-digit hex string starting with #.",
     prompt:
       "Generate scales for these seed colors (path -> hex, where hex is the fixed step-500):\n" +
       seedNames.map((name) => `- ${name}: ${seeds[name]}`).join("\n"),

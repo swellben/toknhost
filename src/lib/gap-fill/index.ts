@@ -260,6 +260,16 @@ export function computeGapFill(
   // L/C targets are tuned per hue for perceptual vividness — e.g. amber reads
   // as saturated at higher lightness than green, which in turn needs higher
   // chroma than red to feel equally vivid.
+  //
+  // 2026-06-25: tried pushing these lighter/more saturated (l=0.61/0.80/0.63,
+  // chroma requested above each hue's gamut ceiling to land at the true
+  // max) for a more vivid, less "dated default" feel. Reverted: verified via
+  // real contrast-ratio comparison that this regressed success/danger from
+  // PASSING AA (4.81/5.11) to FAILING AA (3.30/3.74) as plain text on
+  // `color.background` — a real usage pattern the accessibility checker
+  // tests for, not a hypothetical one. The badge/button-fill usage (color +
+  // its own `.foreground`) was unaffected either way, but that's not the
+  // only real usage. Kept the original values; the tradeoff wasn't worth it.
   const SEMANTIC_DEFAULTS: Record<string, { h: number; l: number; c: number }> = {
     success: { h: 142, l: 0.52, c: 0.19 }, // vivid emerald green
     warning: { h:  75, l: 0.75, c: 0.16 }, // amber — yellows need higher L to not look greenish
