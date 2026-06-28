@@ -3,6 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { runGapFill } from "@/app/dashboard/[id]/actions";
+import { runAccessibilityChecks } from "@/app/dashboard/[id]/a11y-actions";
 
 export type ActionResult = { error: string } | void;
 
@@ -59,6 +61,21 @@ export async function createDesignSystem(
 
 export type UpdateDesignSystemResult = { error: string } | { success: true } | void;
 
+/**
+ * "Update design system" — the renamed, expanded "Save changes" action.
+ * Saves the settings fields, then auto-chains a full AI color regeneration
+ * (forceColorRegen=true: every base color's scale is regenerated, not just
+ * gaps — changing one base color cascades through its whole palette, so a
+ * partial refresh would leave the rest visibly stale) and a full
+ * gap-fill + accessibility recheck, in one click. See PIVOT-PLAN.md
+ * "a new 'Update design system' flow replaces ad-hoc per-token AI
+ * regeneration" — this is the only place that flow fires from.
+ *
+ * Runs on every save, including settings-only edits (e.g. a plain rename)
+ * that don't touch any color — accepted tradeoff for a single, simple
+ * "commit everything" button rather than tracking color-specific dirty
+ * state (still an open, undesigned piece — see PIVOT-PLAN.md).
+ */
 export async function updateDesignSystem(
   designSystemId: string,
   _prevState: UpdateDesignSystemResult,
@@ -78,6 +95,12 @@ export async function updateDesignSystem(
     .eq("id", designSystemId);
 
   if (error) return { error: error.message };
+
+  const gapFillResult = await runGapFill(designSystemId, true);
+  if (gapFillResult && "error" in gapFillResult) return { error: gapFillResult.error };
+
+  const a11yResult = await runAccessibilityChecks(designSystemId);
+  if (a11yResult && "error" in a11yResult) return { error: a11yResult.error };
 
   revalidatePath(`/dashboard/${designSystemId}`);
   revalidatePath("/dashboard");

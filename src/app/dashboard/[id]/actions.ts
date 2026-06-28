@@ -6,11 +6,19 @@ import { parseInput } from "@/lib/parsers";
 import { cssColorToValue } from "@/lib/parsers/shared";
 import {
   computeGapFill,
+  findColorScaleSeeds,
+  NON_SCALE_COLOR_ROOTS,
   hexToOklch,
   oklchToHex,
   contrastRatio,
   type ExistingToken,
 } from "@/lib/gap-fill";
+import { generateColorFill, estimateCostUsd } from "@/lib/ai/color-fill";
+import {
+  extractFreeformTokens,
+  estimateFreeformCostUsd,
+  FREEFORM_INPUT_CHAR_CAP,
+} from "@/lib/ai/freeform-ingest";
 import { materialDarkInvert, ctaDarkPair } from "@/lib/gap-fill/material";
 import { aestheticForeground, normalizeSeedColor } from "@/lib/gap-fill/oklch";
 import { fontFallback, googleFontsUrl } from "@/lib/google-fonts";
@@ -226,6 +234,143 @@ export async function quickStartImport(
   };
 }
 
+// Free-tier cap on freeform-ingestion AI calls per user per month. Same
+// pattern as AI_COLOR_FILL_MONTHLY_CAP (checked against real `ai_usage`
+// rows). Reusing the same 25/month figure for consistency — this wasn't
+// re-derived from a separate cost target, since freeform ingestion's
+// estimated per-call cost (~$0.005-0.01, cheap-tier model) is already lower
+// than color-fill's, so the same cap leaves more headroom, not less.
+const FREEFORM_INGEST_MONTHLY_CAP = 25;
+
+export type FreeformImportResult =
+  | { error: string }
+  | { success: true; createdCount: number; darkModeCount: number; ambiguous: string[] }
+  | void;
+
+/**
+ * The "just describe it" import path — one AI call (no chat, no follow-up
+ * round) extracts the same four fields Quick Start collects via form
+ * inputs (primary/secondary color, font, border radius) from freeform
+ * prose, then runs them through the exact same trusted conversion path
+ * quickStartImport already uses below — a bad extraction fails the same
+ * validation a human mistyping into the Quick Start fields would.
+ */
+export async function freeformImport(
+  designSystemId: string,
+  _prevState: FreeformImportResult,
+  formData: FormData
+): Promise<FreeformImportResult> {
+  const text = (formData.get("text") as string)?.trim();
+  if (!text) return { error: "Describe your design system first." };
+  if (text.length > FREEFORM_INPUT_CHAR_CAP) {
+    return {
+      error: `That's ${text.length} characters — keep it under ${FREEFORM_INPUT_CHAR_CAP} so this stays a single, predictable call.`,
+    };
+  }
+
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  const userId = userData?.user?.id;
+  if (!userId) return { error: "Not signed in." };
+
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+
+  const { count } = await supabase
+    .from("ai_usage")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("feature", "freeform_ingest")
+    .gte("created_at", monthStart.toISOString());
+
+  if ((count ?? 0) >= FREEFORM_INGEST_MONTHLY_CAP) {
+    return { error: `You've hit this month's limit of ${FREEFORM_INGEST_MONTHLY_CAP} AI imports. Try Quick Start or paste a token file instead.` };
+  }
+
+  let extraction;
+  try {
+    const result = await extractFreeformTokens(text);
+    extraction = result.extraction;
+    await supabase.from("ai_usage").insert({
+      user_id: userId,
+      design_system_id: designSystemId,
+      feature: "freeform_ingest",
+      model: result.usage.model,
+      input_tokens: result.usage.inputTokens,
+      output_tokens: result.usage.outputTokens,
+      estimated_cost_usd: estimateFreeformCostUsd(result.usage),
+    });
+  } catch (err) {
+    console.error("Freeform extraction failed:", err);
+    return { error: "Couldn't process that description — try Quick Start or paste a token file instead." };
+  }
+
+  if (!extraction.primaryColor) {
+    return {
+      error:
+        "Couldn't find a primary color in that description — it's the one required field. " +
+        (extraction.ambiguous.length > 0 ? `Also noted but not used: ${extraction.ambiguous.join("; ")}.` : ""),
+    };
+  }
+
+  const primaryHex = normalizeSeedColor(extraction.primaryColor, "primary");
+  const tokens: ParsedToken[] = [];
+  const primary = colorTokenFrom("color.primary", primaryHex);
+  if (!primary) return { error: `Couldn't recognize "${extraction.primaryColor}" as a color.` };
+  tokens.push(primary);
+
+  if (extraction.secondaryColor) {
+    const secondaryHex = normalizeSeedColor(extraction.secondaryColor, "secondary");
+    const secondary = colorTokenFrom("color.secondary", secondaryHex);
+    if (secondary) tokens.push(secondary);
+  }
+
+  if (extraction.borderRadiusPx !== null) {
+    tokens.push({
+      path: "border-radius.base",
+      category: "border-radius",
+      type: "dimension",
+      isAlias: false,
+      value: { value: extraction.borderRadiusPx, unit: "px" },
+      rawValue: String(extraction.borderRadiusPx),
+      provenanceMeta: { format: "freeform-ingest" },
+    });
+  }
+
+  const fontName = extraction.fontName || "Inter";
+  const fontStack = [fontName, fontFallback(fontName)];
+  const fontUrl = googleFontsUrl(fontName);
+  tokens.push({
+    path: "font-family.base",
+    category: "font-family",
+    type: "fontFamily",
+    isAlias: false,
+    value: { primary: fontName, stack: fontStack, fontUrl } as unknown as TokenValueShape,
+    rawValue: fontName,
+    provenanceMeta: { format: "freeform-ingest" },
+  });
+
+  const mode = await getDefaultModeId(supabase, designSystemId);
+  if ("error" in mode) return mode;
+
+  const write = await writeParsedTokens(supabase, designSystemId, mode.id, tokens, "imported");
+  if ("error" in write) return write;
+
+  const gapFilled = await runGapFill(designSystemId);
+  if (gapFilled && "error" in gapFilled) {
+    return { success: true, createdCount: 0, darkModeCount: 0, ambiguous: extraction.ambiguous };
+  }
+
+  revalidatePath(`/dashboard/${designSystemId}`);
+  return {
+    success: true,
+    createdCount: gapFilled && "success" in gapFilled ? gapFilled.createdCount : 0,
+    darkModeCount: gapFilled && "success" in gapFilled ? gapFilled.darkModeCount : 0,
+    ambiguous: extraction.ambiguous,
+  };
+}
+
 export type GapFillResult =
   | { error: string }
   | { success: true; createdCount: number; darkModeCount: number }
@@ -330,13 +475,34 @@ async function remediateContrastPairs(
   return corrected;
 }
 
+// Free-tier cap on AI color-fill runs per user per month — see
+// PIVOT-PLAN.md ("25 AI color-fill runs/month, presented as a plain run
+// count"). Checked against `ai_usage` rows, not a separate counter column,
+// so the cap can be verified/audited against real per-call cost later.
+const AI_COLOR_FILL_MONTHLY_CAP = 25;
+
 /**
  * Runs the OKLCH-based gap-fill pass (CLAUDE.md "Gap-Fill: What Gets
- * Derived From What") and generates a dark-mode counterpart for every
- * color token by inverting lightness. Algorithmic only — no AI, per
- * CLAUDE.md decision #3.
+ * Derived From What"), generates a dark-mode counterpart for every color
+ * token by inverting lightness, and AI-fills color scales (replacing the
+ * deterministic step for that one piece — see PIVOT-PLAN.md "AI-fill scope
+ * is color generation only"). Every other category stays algorithmic, per
+ * CLAUDE.md decision #3 — only the color-scale step now optionally calls AI.
  */
-export async function runGapFill(designSystemId: string): Promise<GapFillResult> {
+const SCALE_AND_FOREGROUND_SUFFIXES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950, "foreground"];
+
+/**
+ * `forceColorRegen`: when true, every current base color (not just ones
+ * missing a scale) gets a fresh AI-generated scale, overwriting whatever
+ * was there before. Used by the explicit "Update design system" action —
+ * changing a base color cascades through its whole palette, so a partial
+ * refresh would leave the rest visibly stale. Plain "Run gap-fill" leaves
+ * this false: it only fills genuine gaps, never touches existing scales.
+ */
+export async function runGapFill(
+  designSystemId: string,
+  forceColorRegen = false
+): Promise<GapFillResult> {
   const supabase = await createClient();
 
   const { data: modes, error: modesError } = await supabase
@@ -377,12 +543,97 @@ export async function runGapFill(designSystemId: string): Promise<GapFillResult>
     value: valueByTokenId.get(t.id),
   }));
 
-  const derived = computeGapFill(existing);
+  let colorOverrides: Record<string, Record<number, string>> | undefined;
+  let colorSeeds: Record<string, string>;
+  // `existingForCompute` is what gets passed to computeGapFill below — for a
+  // forced regen, the target base colors' existing scale/foreground entries
+  // are stripped out so computeGapFill treats them as missing and derives
+  // them fresh. Persistence further down is upsert-based throughout, so the
+  // fresh values overwrite the stale ones rather than erroring on conflict.
+  let existingForCompute = existing;
+  // Populated only when forceColorRegen — paths whose scale/foreground are
+  // being regenerated from scratch. Used below to keep colorTokensForDarkMode
+  // from picking up these paths' STALE hex from the initial DB scan; their
+  // fresh hex arrives separately via `derived`, so including both would
+  // upsert the same token_id+mode_id twice in one batch (Postgres errors on
+  // "ON CONFLICT DO UPDATE command cannot affect row a second time").
+  let forcedPaths: Set<string> = new Set();
+  if (forceColorRegen) {
+    const allBaseColors = existing.filter(
+      (t) =>
+        t.category === "color" &&
+        t.type === "color" &&
+        !/\.(50|100|200|300|400|500|600|700|800|900|950|foreground)$/.test(t.path) &&
+        !NON_SCALE_COLOR_ROOTS.has(t.path) &&
+        t.value &&
+        typeof t.value === "object" &&
+        "hex" in t.value
+    );
+    colorSeeds = Object.fromEntries(
+      allBaseColors.map((t) => [t.path, String((t.value as { hex: string }).hex)])
+    );
+    forcedPaths = new Set(
+      allBaseColors.flatMap((t) => SCALE_AND_FOREGROUND_SUFFIXES.map((s) => `${t.path}.${s}`))
+    );
+    existingForCompute = existing.filter((t) => !forcedPaths.has(t.path));
+  } else {
+    colorSeeds = findColorScaleSeeds(existing);
+  }
+
+  if (Object.keys(colorSeeds).length > 0) {
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData?.user?.id;
+    if (userId) {
+      const monthStart = new Date();
+      monthStart.setUTCDate(1);
+      monthStart.setUTCHours(0, 0, 0, 0);
+
+      const { count } = await supabase
+        .from("ai_usage")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("feature", "color_fill")
+        .gte("created_at", monthStart.toISOString());
+
+      if ((count ?? 0) < AI_COLOR_FILL_MONTHLY_CAP) {
+        // Any API failure here (rate limit, a request too large for
+        // Anthropic's structured-output grammar compiler, network error,
+        // etc.) must not abort the whole action — found live: an uncaught
+        // error here previously crashed gap-fill AND the accessibility
+        // recheck that "Update design system" is supposed to always run.
+        // colorOverrides simply stays undefined on failure, and
+        // computeGapFill already falls back to deterministic math per seed.
+        try {
+          const { results, usage, fellBackFor } = await generateColorFill(colorSeeds);
+          colorOverrides = results;
+          if (fellBackFor.length > 0) {
+            console.warn(`AI color-fill fell back to deterministic math for: ${fellBackFor.join(", ")}`);
+          }
+          await supabase.from("ai_usage").insert({
+            user_id: userId,
+            design_system_id: designSystemId,
+            feature: "color_fill",
+            model: usage.model,
+            input_tokens: usage.inputTokens,
+            output_tokens: usage.outputTokens,
+            estimated_cost_usd: estimateCostUsd(usage),
+          });
+        } catch (err) {
+          console.error("AI color-fill call failed, falling back to deterministic math:", err);
+        }
+      }
+      // Over cap: colorOverrides stays undefined, computeGapFill falls back
+      // to the deterministic materialColorScale for these seeds — gap-fill
+      // itself never fails or blocks just because the AI cap was hit.
+    }
+  }
+
+  const derived = computeGapFill(existingForCompute, colorOverrides);
 
   // Color tokens that already have a light-mode value, before any new
   // derived tokens are added — used below to seed dark-mode inversion.
   const colorTokensForDarkMode: { id: string; hex: string; path: string }[] = tokens
-    .filter((t) => t.category === "color" && t.type === "color")
+    .filter((t) => t.category === "color" && t.type === "color" && !forcedPaths.has(t.path))
     .map((t) => ({ id: t.id, path: t.path, value: valueByTokenId.get(t.id) }))
     .map((t) => {
       const hex =

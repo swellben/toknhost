@@ -73,9 +73,23 @@ const SCALE_SUFFIX_RE =
 // previously caused a real bug: running gap-fill twice produced ~150 spurious
 // extra color tokens (card.50..950, ring.50..950, etc.) because this set
 // didn't exist yet. Color roles that DO get a real scale (primary, secondary,
-// background, foreground, muted, border, success, warning, danger) are not
-// listed here on purpose.
-const NON_SCALE_COLOR_ROOTS = new Set([
+// background, muted, border, success, warning, danger).
+//
+// Originally these flat surface/semantic roles were left OUT of this set —
+// the comment here used to claim that was "on purpose." That was wrong: on
+// any SECOND gap-fill run (or the new AI "Update design system" force-regen
+// path — see PIVOT-PLAN.md), these roles already exist as real flat tokens
+// with real hex values (persisted by sections 2/4 on the FIRST run), so they
+// pass this exact same "base color needing a scale" filter and get spurious
+// .50–.950 scales generated for them too — confirmed live: a second run on
+// a real design system generated color.background.50..950, color.border.
+// 50..950, etc., and (via the AI path) inflated a single AI call to 22
+// seeds, which hit Anthropic's structured-output grammar-size limit and
+// silently aborted the whole action with an uncaught 400. Adding every flat
+// surface/semantic role here, not just the shadcn-only ones, fixes both the
+// correctness bug (spurious tokens) and the cost/reliability bug (oversized
+// AI calls) at the root, for both the deterministic and AI-backed paths.
+export const NON_SCALE_COLOR_ROOTS = new Set([
   "color.card",
   "color.popover",
   "color.accent",
@@ -91,7 +105,41 @@ const NON_SCALE_COLOR_ROOTS = new Set([
   "color.sidebar.accent",
   "color.sidebar.border",
   "color.sidebar.ring",
+  "color.background",
+  "color.muted",
+  "color.border",
+  "color.success",
+  "color.warning",
+  "color.danger",
 ]);
+
+/**
+ * Identifies which base colors in `existing` need a NEW 50–950 scale
+ * generated (same filter `computeGapFill` uses internally), keyed by path ->
+ * seed hex. Exported separately so the caller (the gap-fill server action)
+ * can resolve AI-generated scales for exactly these seeds *before* calling
+ * `computeGapFill`, then pass them in as `colorOverrides` — keeps this
+ * module itself synchronous/pure while letting the AI call happen above it.
+ */
+export function findColorScaleSeeds(existing: ExistingToken[]): Record<string, string> {
+  const existingPaths = new Set(existing.map((t) => t.path));
+  const seeds: Record<string, string> = {};
+  for (const t of existing) {
+    if (
+      t.category !== "color" ||
+      t.type !== "color" ||
+      SCALE_SUFFIX_RE.test(t.path) ||
+      NON_SCALE_COLOR_ROOTS.has(t.path)
+    ) {
+      continue;
+    }
+    const seedHex = hexOf(t.value);
+    if (!seedHex) continue;
+    const hasScale = [50, 500, 950].some((step) => existingPaths.has(`${t.path}.${step}`));
+    if (!hasScale) seeds[t.path] = seedHex;
+  }
+  return seeds;
+}
 
 /**
  * Computes everything missing from an imported token set, per the
@@ -99,8 +147,17 @@ const NON_SCALE_COLOR_ROOTS = new Set([
  * Pure function — no DB access. Returns only *new* tokens to create;
  * the caller (the gap-fill server action) is responsible for persisting
  * them and for generating dark-mode counterparts via `invertLightness`.
+ *
+ * `colorOverrides` (path -> 50..950 scale) lets the caller substitute
+ * AI-generated scales (see `findColorScaleSeeds`/`generateColorFill` in
+ * `src/lib/ai/color-fill.ts`) for the deterministic `generateColorScale` —
+ * AI fully replaces the deterministic color step per the decided design,
+ * everything else here stays algorithmic.
  */
-export function computeGapFill(existing: ExistingToken[]): DerivedToken[] {
+export function computeGapFill(
+  existing: ExistingToken[],
+  colorOverrides?: Record<string, Record<number, string>>
+): DerivedToken[] {
   const existingPaths = new Set(existing.map((t) => t.path));
   const derived: DerivedToken[] = [];
 
@@ -127,7 +184,7 @@ export function computeGapFill(existing: ExistingToken[]): DerivedToken[] {
       existingPaths.has(`${base.path}.${step}`)
     );
     if (!hasScale) {
-      const scale = generateColorScale(seedHex);
+      const scale = colorOverrides?.[base.path] ?? generateColorScale(seedHex);
       for (const [step, hex] of Object.entries(scale)) {
         const path = `${base.path}.${step}`;
         if (existingPaths.has(path)) continue;

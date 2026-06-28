@@ -85,6 +85,50 @@ export type Database = {
           },
         ]
       }
+      ai_usage: {
+        Row: {
+          created_at: string
+          design_system_id: string | null
+          estimated_cost_usd: number
+          feature: string
+          id: string
+          input_tokens: number
+          model: string
+          output_tokens: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          design_system_id?: string | null
+          estimated_cost_usd: number
+          feature: string
+          id?: string
+          input_tokens: number
+          model: string
+          output_tokens: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          design_system_id?: string | null
+          estimated_cost_usd?: number
+          feature?: string
+          id?: string
+          input_tokens?: number
+          model?: string
+          output_tokens?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_design_system_id_fkey"
+            columns: ["design_system_id"]
+            isOneToOne: false
+            referencedRelation: "design_systems"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       design_systems: {
         Row: {
           created_at: string

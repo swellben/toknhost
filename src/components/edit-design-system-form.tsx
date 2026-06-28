@@ -76,14 +76,18 @@ export function EditDesignSystemForm({
         <input type="checkbox" name="isPublic" defaultChecked={isPublic} />
         Public — readable without auth
       </label>
+      <p className="text-xs text-muted-foreground">
+        Regenerates color scales (via AI) and rechecks accessibility every
+        time — changing a base color cascades through the whole palette.
+      </p>
       {state && "error" in state ? (
         <p className="text-sm text-destructive">{state.error}</p>
       ) : null}
       {state && "success" in state ? (
-        <p className="text-sm text-success">Saved.</p>
+        <p className="text-sm text-success">Updated.</p>
       ) : null}
       <Button type="submit" disabled={pending} className="w-fit">
-        {pending ? "Saving…" : "Save changes"}
+        {pending ? "Updating…" : "Update design system"}
       </Button>
     </form>
   );
