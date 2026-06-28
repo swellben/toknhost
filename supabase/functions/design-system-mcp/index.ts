@@ -170,7 +170,7 @@ const TOOLS = [
         mode: { type: "string", description: "Mode name, e.g. \"light\" or \"dark\". Defaults to the design system's default mode." },
         framework: {
           type: "string",
-          enum: ["tailwind-v4", "shadcn", "tailwind-v3", "css-variables", "dtcg", "bootstrap", "figma-variables"],
+          enum: ["tailwind-v4", "shadcn", "tailwind-v3", "css-variables", "dtcg", "bootstrap"],
           description: "Overrides the design system's configured target framework for this call only.",
         },
       },
@@ -187,7 +187,7 @@ const TOOLS = [
       properties: {
         framework: {
           type: "string",
-          enum: ["tailwind-v4", "shadcn", "tailwind-v3", "css-variables", "dtcg", "bootstrap", "figma-variables"],
+          enum: ["tailwind-v4", "shadcn", "tailwind-v3", "css-variables", "dtcg", "bootstrap"],
           description: "Overrides the design system's configured target framework for this call only.",
         },
       },

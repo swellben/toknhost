@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 // Mirrors the `framework` enum exposed by the MCP server's get_tokens/
 // get_theme tools and its GET ?framework= route — see
 // supabase/functions/design-system-mcp/index.ts.
-const FRAMEWORKS = ["tailwind-v4", "shadcn", "tailwind-v3", "css-variables", "dtcg", "bootstrap", "figma-variables"];
+// figma-variables is deferred to V2 — see PIVOT-PLAN.md.
+const FRAMEWORKS = ["tailwind-v4", "shadcn", "tailwind-v3", "css-variables", "dtcg", "bootstrap"];
 
 export function McpAccessCard({
   designSystemId,
