@@ -56,7 +56,7 @@ export async function createDesignSystem(
   if (error) return { error: error.message };
 
   revalidatePath("/dashboard");
-  redirect(`/dashboard/${data.id}`);
+  redirect(`/dashboard/${data.id}/details`);
 }
 
 export type UpdateDesignSystemResult = { error: string } | { success: true } | void;

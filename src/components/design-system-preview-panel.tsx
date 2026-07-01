@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { DesignSystemPreview } from "@/components/design-system-preview";
 import { ShadcnFrameworkPreview } from "@/components/shadcn-framework-preview";
+import { TailwindV4FrameworkPreview } from "@/components/tailwind-v4-framework-preview";
 import { useTheme, type ThemeByMode } from "@/components/theme-context";
 
 // Font/typography tokens are not mode-specific — they should be identical in
@@ -33,15 +34,18 @@ function withSharedVars(byMode: ThemeByMode, activeMode: string): Record<string,
 // fast-follow — see PIVOT-PLAN.md "Visual preview per target framework".
 const PREVIEW_FRAMEWORKS = [
   { id: "css-variables", label: "Generic" },
+  { id: "tailwind-v4", label: "Tailwind v4" },
   { id: "shadcn", label: "shadcn" },
 ] as const;
 
 export function DesignSystemPreviewPanel({
   defaultMode,
   shadcnByMode,
+  tailwindV4ByMode,
 }: {
   defaultMode: string;
   shadcnByMode: ThemeByMode | null;
+  tailwindV4ByMode: ThemeByMode | null;
 }) {
   const { byMode } = useTheme();
   const modeNames = byMode ? Object.keys(byMode) : [];
@@ -102,6 +106,10 @@ export function DesignSystemPreviewPanel({
       {framework === "shadcn" ? (
         <ShadcnFrameworkPreview
           variables={activeMode && shadcnByMode ? shadcnByMode[activeMode]?.variables ?? null : null}
+        />
+      ) : framework === "tailwind-v4" ? (
+        <TailwindV4FrameworkPreview
+          variables={activeMode && tailwindV4ByMode ? tailwindV4ByMode[activeMode]?.variables ?? null : null}
         />
       ) : (
         <DesignSystemPreview

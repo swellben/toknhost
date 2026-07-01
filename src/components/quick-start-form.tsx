@@ -138,9 +138,7 @@ export function QuickStartForm({
           <span className="text-sm text-destructive">{state.error}</span>
         ) : null}
         {state && "success" in state ? (
-          <span className="text-sm text-muted-foreground">
-            Done — {state.createdCount} tokens derived, {state.darkModeCount} dark-mode values.
-          </span>
+          <span className="text-sm text-muted-foreground">Done.</span>
         ) : null}
       </div>
     </form>

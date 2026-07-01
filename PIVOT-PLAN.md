@@ -12,12 +12,13 @@
 **Tried and explicitly reverted** (don't redo without new information): pushing the deterministic `success`/`warning`/`danger` semantic-color defaults more vivid — real contrast-ratio testing showed it regressed two of three from passing to failing AA as plain text on `color.background`. Original values are back in place.
 
 **Not yet built — pick up here:**
-1. Visual preview: Tailwind v4 + css-variables slices of Pass 1 (shadcn already proved the mechanism — same CSS-variable-override approach should work for plain Tailwind utility classes).
-2. Visual preview Pass 2: Bootstrap/Tailwind v3 (needs a real Sass-compile-on-demand server endpoint, caching/debounce strategy undesigned).
-3. Dirty-state UI signal — user has no visual cue that an edited color hasn't been committed via "Update design system" yet.
-4. "Run gap-fill" conditional visibility — should hide once nothing is missing; currently always shows.
-5. Product UI/chrome polish — direction only ("make it sexier"), needs a real scoping pass before it's buildable.
-6. Figma export and the "10 UX principles" — both explicitly deferred to V2, not V1 work.
+1. **Quick Start radius selector UX** — `src/components/quick-start-form.tsx` has a `<select>` dropdown for border radius. Replace it with a segmented button group (5 options: Sharp → Pill) so designers can see and pick the feel at a glance without opening a dropdown. Keep the existing `name="radius"` / `defaultValue={currentRadius ?? "md"}` logic unchanged — purely a visual/UX improvement. Prompt: *"In `src/components/quick-start-form.tsx`, replace the border radius `<select>` dropdown (the `RADIUS_OPTIONS` block) with a segmented button group. Render all 5 options as pill-shaped toggle buttons in a row — selected state gets filled/active style, others are outlined. Use a hidden `<input type='hidden' name='radius'>` to track the selected value so form submission is unchanged. Keep `defaultValue={currentRadius ?? 'md'}` logic. Match the shadcn visual style of the rest of the form."*
+2. Visual preview: Tailwind v4 + css-variables slices of Pass 1 (shadcn already proved the mechanism — same CSS-variable-override approach should work for plain Tailwind utility classes).
+3. Visual preview Pass 2: Bootstrap/Tailwind v3 (needs a real Sass-compile-on-demand server endpoint, caching/debounce strategy undesigned).
+4. Dirty-state UI signal — user has no visual cue that an edited color hasn't been committed via "Update design system" yet.
+5. "Run gap-fill" conditional visibility — should hide once nothing is missing; currently always shows.
+6. Product UI/chrome polish — direction only ("make it sexier"), needs a real scoping pass before it's buildable.
+7. Figma export and the "10 UX principles" — both explicitly deferred to V2, not V1 work.
 
 **Date started:** 2026-06-22
 **Why:** Spent a long session iterating on algorithmic color generation (OKLCH/HSL math in `src/lib/gap-fill/material.ts`) and a rich live-preview UI. User still wasn't happy with generated palette quality after several rounds of fixes. Root cause: "does this look good" is a subjective design judgment math alone can't resolve, and we never validated whether the underlying product (tokens served via MCP) actually works with real tools. Decision: pause generation-quality polish, de-scope the UI, and validate the core product loop first.

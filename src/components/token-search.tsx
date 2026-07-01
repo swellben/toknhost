@@ -10,7 +10,7 @@ import { searchTokens, type TokenSearchResult } from "@/app/dashboard/[id]/searc
  * design-systems list, settings, or anywhere else search doesn't apply. */
 function useCurrentDesignSystemId(): string | null {
   const pathname = usePathname();
-  const match = /^\/dashboard\/([^/]+)$/.exec(pathname);
+  const match = /^\/dashboard\/([^/]+)(?:\/[^/]+)?$/.exec(pathname);
   if (!match || match[1] === "settings") return null;
   return match[1];
 }
@@ -65,7 +65,7 @@ export function TokenSearch() {
             results.map((r) => (
               <Link
                 key={r.path}
-                href={`/dashboard/${designSystemId}?tab=${r.tab}`}
+                href={`/dashboard/${designSystemId}/${r.tab}`}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   setQuery("");

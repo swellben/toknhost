@@ -65,52 +65,21 @@ function hexOf(value: unknown): string | null {
 const SCALE_SUFFIX_RE =
   /\.(50|100|200|300|400|500|600|700|800|900|950|foreground)$/;
 
-// Flat single-value semantic role colors that must NEVER get a generated
-// 50–950 scale, even though they pass the SCALE_SUFFIX_RE check (their path
-// doesn't end in a scale-step suffix) and have a resolvable hex value. These
-// are shadcn-required roles (section 4c below) — shadcn has no concept of
-// e.g. "ring-500" or "chart-1-200", so generating one is pure noise, and
-// previously caused a real bug: running gap-fill twice produced ~150 spurious
-// extra color tokens (card.50..950, ring.50..950, etc.) because this set
-// didn't exist yet. Color roles that DO get a real scale (primary, secondary,
-// background, muted, border, success, warning, danger).
-//
-// Originally these flat surface/semantic roles were left OUT of this set —
-// the comment here used to claim that was "on purpose." That was wrong: on
-// any SECOND gap-fill run (or the new AI "Update design system" force-regen
-// path — see PIVOT-PLAN.md), these roles already exist as real flat tokens
-// with real hex values (persisted by sections 2/4 on the FIRST run), so they
-// pass this exact same "base color needing a scale" filter and get spurious
-// .50–.950 scales generated for them too — confirmed live: a second run on
-// a real design system generated color.background.50..950, color.border.
-// 50..950, etc., and (via the AI path) inflated a single AI call to 22
-// seeds, which hit Anthropic's structured-output grammar-size limit and
-// silently aborted the whole action with an uncaught 400. Adding every flat
-// surface/semantic role here, not just the shadcn-only ones, fixes both the
-// correctness bug (spurious tokens) and the cost/reliability bug (oversized
-// AI calls) at the root, for both the deterministic and AI-backed paths.
-export const NON_SCALE_COLOR_ROOTS = new Set([
-  "color.card",
-  "color.popover",
-  "color.accent",
-  "color.input",
-  "color.ring",
-  "color.chart.1",
-  "color.chart.2",
-  "color.chart.3",
-  "color.chart.4",
-  "color.chart.5",
-  "color.sidebar",
-  "color.sidebar.primary",
-  "color.sidebar.accent",
-  "color.sidebar.border",
-  "color.sidebar.ring",
-  "color.background",
-  "color.muted",
-  "color.border",
-  "color.success",
-  "color.warning",
-  "color.danger",
+// The ONLY paths gap-fill will ever generate/regenerate a 50–950 scale for.
+// Deliberately an allowlist, not a denylist: a denylist means anything not
+// explicitly excluded gets treated as "a base color needing a scale," which
+// breaks the moment a user imports a token set with color families gap-fill
+// has no opinion about — e.g. a Mantine theme's `color.violet`/`color.teal`
+// aliases. Imported tokens are the source of truth and must never be
+// silently overwritten, duplicated into nested junk scales (their own shade
+// tokens, e.g. `color.violet.5`, don't match SCALE_SUFFIX_RE either, so a
+// denylist would treat THOSE as base colors too), or stripped by the
+// "Update design system" force-regen path. Only primary/secondary are roles
+// this product actually offers scale-completion for — everything else a
+// user provides passes through untouched, ready for export as-is.
+export const SCALE_GENERATED_COLOR_ROOTS = new Set([
+  "color.primary",
+  "color.secondary",
 ]);
 
 /**
@@ -129,7 +98,7 @@ export function findColorScaleSeeds(existing: ExistingToken[]): Record<string, s
       t.category !== "color" ||
       t.type !== "color" ||
       SCALE_SUFFIX_RE.test(t.path) ||
-      NON_SCALE_COLOR_ROOTS.has(t.path)
+      !SCALE_GENERATED_COLOR_ROOTS.has(t.path)
     ) {
       continue;
     }
@@ -164,17 +133,19 @@ export function computeGapFill(
   const hasAnyOf = (category: TokenCategory) =>
     existing.some((t) => t.category === category);
 
-  // 1. Full 50–950 scale + *-foreground for every imported base color that
-  // doesn't already have one (skip tokens that already look like a
-  // generated scale step or foreground, to avoid scaling a scale, and skip
-  // known flat shadcn-role colors that should never get one — see
-  // NON_SCALE_COLOR_ROOTS above).
+  // 1. Full 50–950 scale + *-foreground for primary/secondary if they don't
+  // already have one (skip tokens that already look like a generated scale
+  // step or foreground, to avoid scaling a scale). Restricted to
+  // SCALE_GENERATED_COLOR_ROOTS, not "every color token" — anything else the
+  // user imported (shadcn-required roles, semantic colors, or arbitrary
+  // color families from another design system like Mantine's named hues)
+  // passes through untouched. See the allowlist's own comment for why.
   const baseColors = existing.filter(
     (t) =>
       t.category === "color" &&
       t.type === "color" &&
       !SCALE_SUFFIX_RE.test(t.path) &&
-      !NON_SCALE_COLOR_ROOTS.has(t.path) &&
+      SCALE_GENERATED_COLOR_ROOTS.has(t.path) &&
       hexOf(t.value)
   );
 

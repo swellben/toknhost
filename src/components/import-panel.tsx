@@ -2,13 +2,11 @@
 
 import { useState } from "react";
 import { QuickStartForm } from "@/components/quick-start-form";
-import { ImportTokensForm } from "@/components/import-tokens-form";
-import { FreeformImportForm } from "@/components/freeform-import-form";
+import { SmartImportForm } from "@/components/smart-import-form";
 
 const TABS = [
   { id: "quick-start", label: "Quick start" },
-  { id: "describe", label: "Describe it" },
-  { id: "paste", label: "Paste a token file" },
+  { id: "import", label: "Import" },
 ] as const;
 
 export function ImportPanel({
@@ -51,10 +49,8 @@ export function ImportPanel({
           currentFontName={currentFontName}
           currentRadius={currentRadius}
         />
-      ) : tab === "describe" ? (
-        <FreeformImportForm designSystemId={designSystemId} />
       ) : (
-        <ImportTokensForm designSystemId={designSystemId} />
+        <SmartImportForm designSystemId={designSystemId} />
       )}
     </div>
   );

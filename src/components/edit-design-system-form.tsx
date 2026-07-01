@@ -43,15 +43,7 @@ export function EditDesignSystemForm({
         <Label htmlFor="name">Name</Label>
         <Input id="name" name="name" defaultValue={name} required />
       </div>
-      <div className="grid gap-2">
-        <Label htmlFor="description">Description</Label>
-        <Input
-          id="description"
-          name="description"
-          defaultValue={description ?? ""}
-          placeholder="Optional"
-        />
-      </div>
+      <input type="hidden" name="description" defaultValue={description ?? ""} />
       <div className="grid gap-2">
         <Label htmlFor="targetFramework">Target framework</Label>
         <select
@@ -66,20 +58,11 @@ export function EditDesignSystemForm({
             </option>
           ))}
         </select>
-        <p className="text-xs text-muted-foreground">
-          Shapes how tokens are presented to consuming AI agents/tools —
-          variable names and value formats match this framework's
-          conventions.
-        </p>
       </div>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" name="isPublic" defaultChecked={isPublic} />
         Public — readable without auth
       </label>
-      <p className="text-xs text-muted-foreground">
-        Regenerates color scales (via AI) and rechecks accessibility every
-        time — changing a base color cascades through the whole palette.
-      </p>
       {state && "error" in state ? (
         <p className="text-sm text-destructive">{state.error}</p>
       ) : null}

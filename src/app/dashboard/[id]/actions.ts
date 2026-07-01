@@ -7,7 +7,7 @@ import { cssColorToValue } from "@/lib/parsers/shared";
 import {
   computeGapFill,
   findColorScaleSeeds,
-  NON_SCALE_COLOR_ROOTS,
+  SCALE_GENERATED_COLOR_ROOTS,
   hexToOklch,
   oklchToHex,
   contrastRatio,
@@ -27,11 +27,6 @@ import type { ParsedToken, TokenValueShape } from "@/types/tokens";
 import type { Json, TablesInsert } from "@/types/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
-
-export type ImportResult =
-  | { error: string }
-  | { success: true; count: number; warnings: string[] }
-  | void;
 
 /** Shared persistence step for any source of ParsedToken[] — the paste
  * importer, Quick Start, and (eventually) any future import path all
@@ -99,30 +94,6 @@ async function getDefaultModeId(
 
   if (error || !data) return { error: "Could not find the default mode for this design system." };
   return { id: data.id };
-}
-
-export async function importTokens(
-  designSystemId: string,
-  _prevState: ImportResult,
-  formData: FormData
-): Promise<ImportResult> {
-  const raw = (formData.get("raw") as string)?.trim();
-  if (!raw) return { error: "Paste some tokens first." };
-
-  const result = parseInput(raw);
-  if (result.format === "unknown" || result.tokens.length === 0) {
-    return { error: result.warnings.join(" ") || "No tokens found." };
-  }
-
-  const supabase = await createClient();
-  const mode = await getDefaultModeId(supabase, designSystemId);
-  if ("error" in mode) return mode;
-
-  const write = await writeParsedTokens(supabase, designSystemId, mode.id, result.tokens, "imported");
-  if ("error" in write) return write;
-
-  revalidatePath(`/dashboard/${designSystemId}`);
-  return { success: true, count: write.count, warnings: result.warnings };
 }
 
 export type QuickStartResult =
@@ -242,33 +213,69 @@ export async function quickStartImport(
 // than color-fill's, so the same cap leaves more headroom, not less.
 const FREEFORM_INGEST_MONTHLY_CAP = 25;
 
-export type FreeformImportResult =
+export type SmartImportResult =
   | { error: string }
-  | { success: true; createdCount: number; darkModeCount: number; ambiguous: string[] }
+  | {
+      success: true;
+      mode: "parsed" | "ai";
+      createdCount: number;
+      darkModeCount: number;
+      warnings?: string[];
+      ambiguous?: string[];
+    }
   | void;
 
 /**
- * The "just describe it" import path — one AI call (no chat, no follow-up
- * round) extracts the same four fields Quick Start collects via form
- * inputs (primary/secondary color, font, border radius) from freeform
- * prose, then runs them through the exact same trusted conversion path
- * quickStartImport already uses below — a bad extraction fails the same
- * validation a human mistyping into the Quick Start fields would.
+ * The single unified import path — one textarea accepts anything: a
+ * well-formed token file in any of the 8 supported formats, freeform prose
+ * describing a brand, or a partial/non-linted/malformed token blob.
+ *
+ * Step 1 tries the deterministic parsers first (free, no AI) — if the input
+ * confidently matches a known format, that's used directly, no AI call.
+ * Step 2 falls back to the same AI extraction `freeformImport` used to use
+ * (four fields: primary/secondary color, font, border radius) for anything
+ * the parsers couldn't recognize — prose, malformed JSON, or a partial list
+ * that didn't parse cleanly. Both paths converge on the same conversion
+ * helpers and `runGapFill`, so either way the design system ends up
+ * complete and accessible.
  */
-export async function freeformImport(
+export async function smartImport(
   designSystemId: string,
-  _prevState: FreeformImportResult,
+  _prevState: SmartImportResult,
   formData: FormData
-): Promise<FreeformImportResult> {
+): Promise<SmartImportResult> {
   const text = (formData.get("text") as string)?.trim();
-  if (!text) return { error: "Describe your design system first." };
-  if (text.length > FREEFORM_INPUT_CHAR_CAP) {
+  if (!text) return { error: "Paste or describe your design system first." };
+
+  const supabase = await createClient();
+
+  // Step 1 — deterministic parse, no AI involved.
+  const parsed = parseInput(text);
+  if (parsed.format !== "unknown" && parsed.tokens.length > 0) {
+    const mode = await getDefaultModeId(supabase, designSystemId);
+    if ("error" in mode) return mode;
+
+    const write = await writeParsedTokens(supabase, designSystemId, mode.id, parsed.tokens, "imported");
+    if ("error" in write) return write;
+
+    const gapFilled = await runGapFill(designSystemId);
+    revalidatePath(`/dashboard/${designSystemId}`);
     return {
-      error: `That's ${text.length} characters — keep it under ${FREEFORM_INPUT_CHAR_CAP} so this stays a single, predictable call.`,
+      success: true,
+      mode: "parsed",
+      createdCount: gapFilled && "success" in gapFilled ? gapFilled.createdCount : 0,
+      darkModeCount: gapFilled && "success" in gapFilled ? gapFilled.darkModeCount : 0,
+      warnings: parsed.warnings,
     };
   }
 
-  const supabase = await createClient();
+  // Step 2 — AI fallback for prose / malformed / partial input.
+  if (text.length > FREEFORM_INPUT_CHAR_CAP) {
+    return {
+      error: `That's ${text.length} characters and didn't match a known token format — keep AI-assisted input under ${FREEFORM_INPUT_CHAR_CAP} characters so this stays a single, predictable call.`,
+    };
+  }
+
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData?.user?.id;
   if (!userId) return { error: "Not signed in." };
@@ -285,7 +292,7 @@ export async function freeformImport(
     .gte("created_at", monthStart.toISOString());
 
   if ((count ?? 0) >= FREEFORM_INGEST_MONTHLY_CAP) {
-    return { error: `You've hit this month's limit of ${FREEFORM_INGEST_MONTHLY_CAP} AI imports. Try Quick Start or paste a token file instead.` };
+    return { error: `You've hit this month's limit of ${FREEFORM_INGEST_MONTHLY_CAP} AI imports this month. Try Quick Start instead.` };
   }
 
   let extraction;
@@ -302,15 +309,15 @@ export async function freeformImport(
       estimated_cost_usd: estimateFreeformCostUsd(result.usage),
     });
   } catch (err) {
-    console.error("Freeform extraction failed:", err);
-    return { error: "Couldn't process that description — try Quick Start or paste a token file instead." };
+    console.error("Smart import AI extraction failed:", err);
+    return { error: "Couldn't process that input — it didn't match a known token format. Try Quick Start instead." };
   }
 
   if (!extraction.primaryColor) {
     return {
       error:
-        "Couldn't find a primary color in that description — it's the one required field. " +
-        (extraction.ambiguous.length > 0 ? `Also noted but not used: ${extraction.ambiguous.join("; ")}.` : ""),
+        "Couldn't find a recognizable token format or a primary color in that input. " +
+        (extraction.ambiguous.length > 0 ? `Noted but not used: ${extraction.ambiguous.join("; ")}.` : ""),
     };
   }
 
@@ -334,7 +341,7 @@ export async function freeformImport(
       isAlias: false,
       value: { value: extraction.borderRadiusPx, unit: "px" },
       rawValue: String(extraction.borderRadiusPx),
-      provenanceMeta: { format: "freeform-ingest" },
+      provenanceMeta: { format: "smart-import-ai" },
     });
   }
 
@@ -348,7 +355,7 @@ export async function freeformImport(
     isAlias: false,
     value: { primary: fontName, stack: fontStack, fontUrl } as unknown as TokenValueShape,
     rawValue: fontName,
-    provenanceMeta: { format: "freeform-ingest" },
+    provenanceMeta: { format: "smart-import-ai" },
   });
 
   const mode = await getDefaultModeId(supabase, designSystemId);
@@ -359,12 +366,13 @@ export async function freeformImport(
 
   const gapFilled = await runGapFill(designSystemId);
   if (gapFilled && "error" in gapFilled) {
-    return { success: true, createdCount: 0, darkModeCount: 0, ambiguous: extraction.ambiguous };
+    return { success: true, mode: "ai", createdCount: 0, darkModeCount: 0, ambiguous: extraction.ambiguous };
   }
 
   revalidatePath(`/dashboard/${designSystemId}`);
   return {
     success: true,
+    mode: "ai",
     createdCount: gapFilled && "success" in gapFilled ? gapFilled.createdCount : 0,
     darkModeCount: gapFilled && "success" in gapFilled ? gapFilled.darkModeCount : 0,
     ambiguous: extraction.ambiguous,
@@ -564,7 +572,7 @@ export async function runGapFill(
         t.category === "color" &&
         t.type === "color" &&
         !/\.(50|100|200|300|400|500|600|700|800|900|950|foreground)$/.test(t.path) &&
-        !NON_SCALE_COLOR_ROOTS.has(t.path) &&
+        SCALE_GENERATED_COLOR_ROOTS.has(t.path) &&
         t.value &&
         typeof t.value === "object" &&
         "hex" in t.value
