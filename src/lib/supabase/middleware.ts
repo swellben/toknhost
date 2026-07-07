@@ -7,7 +7,9 @@ import type { Database } from "@/types/supabase";
 // callers without a browser session — they enforce their own access
 // control via Supabase RLS (and eventually bearer tokens for the real
 // MCP server) rather than a cookie-based redirect to /login.
-const PUBLIC_PATHS = ["/login", "/auth", "/api"];
+// /studio is the V0 theme workspace — a client-side tool with no DB
+// dependency, so it's usable without a session (persistence/auth comes later).
+const PUBLIC_PATHS = ["/login", "/auth", "/api", "/studio"];
 
 /**
  * Refreshes the Supabase session cookie on every request and redirects

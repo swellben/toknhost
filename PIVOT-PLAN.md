@@ -1,6 +1,109 @@
 # MVP pivot plan — status & next steps
 
-## Status as of 2026-06-25 — start here
+## V0 re-scope as of 2026-07-06 — START HERE
+
+**Decision (2026-07-06):** Pause all front-end and feature work. Step back and rethink the front end and the feature set from scratch. This supersedes the "Not yet built — pick up here" list in the older status section below — do **not** resume those items (radius selector, multi-framework preview slices, dirty-state UI, etc.) until the re-scope is settled.
+
+### Step 3 (BUILT 2026-07-06): Theme Studio core loop + UI
+
+The three-pane workspace from the sketch is built and verified in the browser at **`/studio`** (added to `PUBLIC_PATHS` in `src/lib/supabase/middleware.ts` — client-side, no auth/DB yet).
+- **New files:** `src/app/studio/page.tsx`, `src/components/studio/theme-studio.tsx` (workspace: top bar, left rail nav, middle editor, export dialog), `src/components/studio/theme-preview.tsx` (live sample dashboard), `src/lib/studio/theme.ts` (derivation: seeds → ramps → semantic roles → `theme.css`).
+- **Reuses:** `materialColorScale()` from `src/lib/gap-fill/material.ts` (deterministic ramp, 500=seed), `aestheticForeground()` from `oklch.ts`, and the CSS-var-override preview mechanism proven in `shadcn-framework-preview.tsx`.
+- **Editor:** 6 color seeds (brand primary, brand secondary, neutral, success, warning, danger) each with a live 50–950 ramp; Typography (font family); **Spacing (global density presets — Compact→Expansive, 7 steps — that set Tailwind's base `--spacing` unit, which every padding/gap/size utility multiplies off, so one value rescales the whole UI's density; verified the build emits `calc(var(--spacing) * n)` so the wrapper override cascades)**; Radius (segmented Sharp→Pill); Semantic Roles read-only list showing each shadcn role's resolved value per mode.
+- **Typography — Google Fonts / Custom (2026-07-06):** Typography uses its own **Google Fonts | Custom** toggle (not the generic Generated/Manual). **Google Fonts** = searchable picker over the full ~1,936-font catalog (`src/lib/google-fonts.ts`, names only, paginated 50/scroll — no per-option font loading); selecting lazily injects a cached `<link>` (`display=swap`, weights 400–700). **Custom** = paste a URL (a `.css` stylesheet → `@import`; a `.woff2/.ttf` file → `@font-face`) OR upload a font file (loaded via a local object URL for preview; export emits a self-host note since blob URLs can't ship). All loaders live in `src/lib/studio/google-font-loader.ts` (`loadGoogleFont`/`loadStylesheet`/`loadFontFace`/`loadCustomFont`, cached by hashed id); a top-level effect keyed on `fontSource`/`fontName`/`customFont` (re)loads on undo. `ThemeConfig` now carries `fontSource` + `fontName` + `customFont`; `buildFontPrelude()` in theme.ts produces the right `@import`/`@font-face`/note per case. Perf verdict (prior turn): listing names is free; only the one chosen font file loads. Curated `FONT_OPTIONS` presets retired from the UI.
+- **Font applies to WHOLE preview + upload self-host export (2026-07-06):** Preview font-swap was leaking: shadcn `.font-heading` compiles to `font-family: var(--font-sans)` and `.font-sans` to `var(--font-dm-sans)` (verified in the served CSS), so setting only `fontFamily` on the wrapper left card titles/stat numbers on the app default. Fix: `theme-preview.tsx` wrapper now also overrides `--font-dm-sans`/`--font-sans`/`--font-heading` (mono left untouched). Upload export upgraded: `buildFontPrelude()` now emits a real ready-to-paste `@font-face` at `/fonts/<filename>` with `format()` + a "save file here" note (we deliberately do NOT host uploaded fonts — licensing/redistribution risk; MCP stays CSS-only, user/agent self-hosts the binary). See the hosting-vs-self-host analysis discussion.
+- **Generated vs Manual + Undo (2026-07-06):** Color, Spacing, Radius, and Typography each have a **Generated | Manual** toggle (Radius/Typography manual added 2026-07-06; Radius-manual = base slider + read-only derived sm/md/lg/xl). Color-manual exposes every one of the 66 ramp steps (6 families × 11) as its own editable color swatch; Spacing-manual is a base-unit slider (0.15–0.6rem) with the read-only derived scale. Color source of truth moved to a working `ramps` field on `ThemeConfig` (seed-generated OR hand-edited) that `deriveTheme`/export/preview all read — so manual edits cascade through the same alias path as seeds. **Undo** (top bar + left rail) via a snapshot-history reducer (`useThemeHistory`) with per-field coalescing so a color-drag is one undo step; **Reset all** restores defaults (itself undoable). Switching Manual→Generated regenerates from seeds and discards manual edits (recoverable via Undo).
+- **Verified live (real browser):** editing a seed cascades instantly through aliased roles (changed primary seed → `--primary`/`--ring`/`--chart-1`/`--sidebar-primary` all updated); light/dark toggle swaps the var set; export dialog emits valid `:root`+`.dark`+`@theme inline` shadcn-compatible `theme.css`; no console errors.
+- **Known gaps / next:** no persistence (state is in-memory React only — no save/load, no design-system selector wired to DB); "Settings" nav is a disabled placeholder; Import side of "Import/Export" not built (export only); MCP delivery of the generated theme not wired; light-mode preview renders while under the app's global `.dark` html class, so shadcn `dark:` utility branches technically still apply (minor — main colors come from overridden vars so it reads correctly); deterministic ramp quality still the load-bearing risk ([[gap-fill-design-quality]]).
+
+**What we keep (unchanged, not touched by this pivot):**
+- **Backend** — MCP server (`supabase/functions/design-system-mcp/`), presenters (`lib/present.ts`).
+- **Database** — Supabase project `gxpqjpwsswhgdufyyxlt`, schema/migrations (`supabase/migrations/`), and the `master-reference` fixture (id `f994089e-fff3-4870-839f-233af1757628`).
+- **Notes** — all planning docs (`PIVOT-PLAN.md`, `MVP-SCOPE.md`, `MARKET-RESEARCH.md`, `MARKETING-ASSESSMENT.md`) and the `Design files backend/` reference folder.
+- **Parsers** (`src/lib/parsers/`), **accessibility checker** (`src/lib/a11y/`), **token type system** (`src/types/tokens.ts`).
+
+**V0 scope constraint — Tailwind only:** For V0, **Tailwind CSS is the only front-end design system we offer.** Drop shadcn / Bootstrap / css-variables / Figma / Mantine as *offered* export targets for V0 (the presenters can stay in the codebase, just not surfaced in the product). The token model, the UI, and the export/MCP output should all be organized around Tailwind's theme-variable model. Rationale: one framework done excellently beats five done partially; Tailwind's `@theme` system is itself a clean, opinionated design-token vocabulary we can adopt as our canonical model rather than inventing our own.
+
+### Step 1 (done 2026-07-06): Tailwind theme system — reference
+
+Read from the live docs (https://tailwindcss.com/docs/theme + /docs/colors). Distilled for our purposes:
+
+**Core mechanic.** Tailwind v4 is CSS-first. You `@import "tailwindcss";` then declare design tokens in an `@theme { … }` block. A theme variable is not just a CSS var — declaring `--color-mint-500: oklch(…)` *generates the utility classes* (`bg-mint-500`, `text-mint-500`, `fill-mint-500`, …) **and** exposes `var(--color-mint-500)` for custom CSS/JS. This is the key insight for us: **a Tailwind theme *is* a token set.** `@theme` = tokens-that-make-utilities; `:root` = plain vars with no utilities.
+
+**Namespaces (this is our V0 token vocabulary).** Each namespace maps to a family of utilities/variants:
+
+| Namespace | Drives | Our token category |
+|---|---|---|
+| `--color-*` | `bg-`, `text-`, `border-`, `fill-`, `ring-`, … (+ `/opacity` modifier) | color |
+| `--font-*` | `font-sans` etc. | font-family |
+| `--text-*` (+ paired `--text-*--line-height`) | `text-xl` etc. | font-size (with bundled line-height) |
+| `--font-weight-*` | `font-bold` | font-weight |
+| `--tracking-*` | `tracking-wide` | letter-spacing |
+| `--leading-*` | `leading-tight` | line-height |
+| `--breakpoint-*` | `sm:` `md:` responsive variants | breakpoint |
+| `--container-*` | `@sm:` container queries + `max-w-md` | sizing/container |
+| `--spacing-*` (base `--spacing`) | `px-4`, `max-h-16` (multiplied off one base unit) | spacing |
+| `--radius-*` | `rounded-sm` | border-radius |
+| `--shadow-*` / `--inset-shadow-*` / `--drop-shadow-*` / `--text-shadow-*` | `shadow-md`, `drop-shadow-*`, `text-shadow-*` | shadow family |
+| `--blur-*` | `blur-md` | blur/effects |
+| `--perspective-*`, `--aspect-*`, `--zoom-*` | perspective/aspect/zoom | effects |
+| `--ease-*` | `ease-out` | easing |
+| `--animate-*` (+ `@keyframes`) | `animate-spin` | animation |
+
+**Override / extend / disable.**
+- *Extend*: add a new var inside `@theme` (defaults stay).
+- *Override*: redeclare a default var (`--breakpoint-sm: 30rem;`).
+- *Clear a namespace*: `--color-*: initial;` then declare only what you want.
+- *Clear everything*: `--*: initial;` for a fully bespoke theme.
+- *Disable one value*: `--color-lime-*: initial;`.
+
+**Referencing other vars — `@theme inline`.** If a token points at another variable (e.g. a runtime `:root`/`[data-theme="dark"]` var), you must use `@theme inline { --color-canvas: var(--acme-canvas-color); }` so the utility embeds `var(...)` rather than resolving at definition time. This is exactly the pattern for **light/dark mode**: define the raw values in `:root` / `[data-theme="dark"]`, alias them into `@theme inline`. Relevant to our primitive→semantic aliasing constraint.
+- `@theme static` — force-emit *all* vars (not just used ones), useful when we generate a themeable stylesheet consumers will read at runtime.
+
+**Colors.** 22 default palettes (red, orange, amber, yellow, lime, green, emerald, teal, cyan, sky, blue, indigo, violet, purple, fuchsia, pink, rose, slate, gray, zinc, neutral, stone) × 11 shades (50–950), plus `black`/`white`, all authored in **OKLCH**. Opacity via `/` modifier (`bg-sky-500/50`, arbitrary `/[71.37%]`, or `/(--var)`). In custom CSS, adjust alpha with `--alpha(var(--color-gray-950) / 10%)`.
+
+**Selected default values worth pinning** (so our defaults match Tailwind's expectations):
+- `--spacing: 0.25rem` (all spacing/sizing multiply off this one unit).
+- Breakpoints: sm 40rem / md 48rem / lg 64rem / xl 80rem / 2xl 96rem.
+- Radius: xs .125 / sm .25 / md .375 / lg .5 / xl .75 / 2xl 1 / 3xl 1.5 / 4xl 2 rem.
+- Font weights: thin 100 → black 900 in 100s (normal 400, medium 500, semibold 600, bold 700).
+- `--text-*` ship a paired `--text-*--line-height` (e.g. `--text-2xl: 1.5rem; --text-2xl--line-height: calc(2 / 1.5);`) — our font-size tokens should carry a line-height alongside to match.
+- Default eases: in `cubic-bezier(0.4,0,1,1)`, out `(0,0,0.2,1)`, in-out `(0.4,0,0.2,1)`.
+- Built-in animations: spin/ping/pulse/bounce with their `@keyframes`.
+
+**Distribution.** Themes are shareable as a plain CSS file (`@import "../brand/theme.css";`) or an npm package. **This is our natural V0 export/MCP artifact:** emit a `@theme { … }` block that a consumer drops into their `app.css`.
+
+### Step 2: front-end & feature spec (defined 2026-07-06 from Ben's sketch)
+
+**Product goal / positioning:** *"Design your theme once. Use it everywhere."* Author a theme in one place; ship it to multiple destinations:
+- **Vibe-coding tools** (Cursor / v0 / Claude etc.) — copy-paste-ready `@theme` block / rules.
+- **Tailwind theme exports** — a `theme.css` (`:root` + `.dark` + `@theme inline`).
+- **Figma library** — deferred to a later phase (V2), not V0.
+(The MCP server we already have is the natural delivery channel for the "use it everywhere" promise.)
+
+**Token model = two tiers (locked):**
+- **Primitives** — the Tailwind `@theme` namespaces (color scales, font-family/size/weight, spacing, radius, shadows, …). Authored directly.
+- **Semantic tokens** — the shadcn roles (`primary`, `secondary`, `background`/`foreground`, `card`, `muted`, `border`, `ring`, `chart-*`, `sidebar-*`, …). These **alias to primitives**, never store raw values ([[primitive-alias-constraint]]) so edits cascade.
+- **Brand colors are primitives:** primary + secondary brand are authored as primitive palettes (50–950); the `primary`/`secondary` semantic roles alias to them. (Dropped "accent" as a designer term — see brand/accent discussion. shadcn's own `accent` role stays a near-neutral hover surface, auto-derived.)
+
+**UI — three-pane workspace (from sketch):**
+1. **Left rail — token navigation.** Two collapsible groups: **Primitives** (Color, Font Family, Font Size, Font Weight, …) and **Semantic Tokens** (the shadcn roles). Bottom utilities: **Import/Export**, **Reset**, **Dark Mode** toggle, **Settings**.
+2. **Middle pane — variable editor** for the selected category. E.g. selecting a color palette (like "Brand color") shows its editable scale (`-50` … `-950`) as swatch rows.
+3. **Right pane — live sample product UI / fake dashboard** that re-themes **instantly** as variables change — CSS-variable override on a real shadcn/Tailwind preview, no rebuild. Evolves the existing `src/components/shadcn-framework-preview.tsx` mechanism.
+
+**Top bar:** logo · "Select Design System ▾" · "New Design System" · account.
+
+**Why this is coherent / already-proven:** instant re-theming = swapping CSS vars on the live preview (already working for the shadcn slice). It *requires* the alias model — editing `brand-500` must ripple through `--primary` into every previewed component — which is exactly the tier structure above.
+
+**Resolved 2026-07-06 — brand color is seed-based:** the user picks **one** brand color and we generate the full `50–950` ramp from it (not hand-authoring 11 shades). One seed per brand palette (primary brand → ramp, secondary brand → ramp).
+- **Follow-on decision (resolved 2026-07-06) — deterministic only:** V0 color ramps are generated **purely deterministically** via OKLCH math (`src/lib/gap-fill/material.ts`) — instant and free on every seed change. **AI color-fill (`src/lib/ai/color-fill.ts`) is OUT of V0 scope** (not even an opt-in polish action); it stays in the codebase, deferred to a later phase. The a11y checker (`src/lib/a11y/`) still validates/flags generated values. Known risk to watch: deterministic ramps can look flat vs Tailwind's hand-tuned palettes — a pain point in earlier sessions ([[gap-fill-design-quality]]); ramp quality must be revisited before calling V0 done, since there's no AI fallback now.
+- **Resolved 2026-07-06 — semantics seed from user-picked colors, not auto-derived:** for V0 the user picks **seed colors** for the color scales; we generate the ramps; the shadcn semantic roles alias into those generated primitives. No auto-deriving neutrals/roles from a single brand seed ("for now" — keep it simple). V0 color seed inputs ≈ brand primary, brand secondary, a neutral/gray (drives `background`/`foreground`/`muted`/`border`/`card`/`sidebar`), and optionally status hues (success/warning/danger). Each seed → deterministic OKLCH ramp; roles map e.g. `--primary: var(--color-brand-primary-600)`, `--muted: var(--color-neutral-100)`.
+
+**V0 essential vs. deferred:** essential = color primitives (incl. brand primary/secondary), radius, core typography (family/size/weight), and the shadcn semantic color roles + light/dark; the live preview; export as `@theme`/`theme.css`; MCP delivery. Deferred = Figma export, the long tail of effect namespaces (perspective/zoom/aspect/text-shadow), and UX tokens (date formatting, tone of voice).
+
+---
+
+## Status as of 2026-06-25 — (historical; superseded by the V0 re-scope above)
 
 **Fully built and verified** (real browser clicks, real API calls, real DB writes — not just code review):
 - All 4 V1 target frameworks proven through real consumers: css-variables, Tailwind v4, shadcn, Bootstrap (see "Already built" / ingestion-test entries below).
