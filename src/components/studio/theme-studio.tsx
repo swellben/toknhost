@@ -21,6 +21,7 @@ import {
   Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Logo } from "@/components/logo";
 import { UserMenu } from "@/components/user-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -310,7 +311,7 @@ export function ThemeStudio({ userEmail }: { userEmail?: string }) {
       {/* Top bar */}
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
         <div className="flex items-center gap-2">
-          <div className="size-5 rounded-md bg-primary" />
+          <Logo className="size-5 shrink-0" />
           <span className="text-sm font-semibold">Tokn.Host</span>
           <div className="mx-1 h-4 w-px bg-border" />
           <SystemSwitcher
