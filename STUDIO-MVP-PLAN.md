@@ -30,10 +30,12 @@ per-framework output and works — the missing half is writing the alias-aware r
 
 ## Build order
 
+> **Progress (2026-07-08): #1 is DONE. Next up = #2 (MCP handoff in studio).**
+
 | # | Work | Why it's here |
 |---|------|---------------|
-| **1** | **Studio→rows translator** | 🔴 The blocker. On Save, emit alias-aware `tokens`/`token_values`/`modes` (Tailwind; primitives raw, semantics as aliases). Pillage the dashboard row-writers; reuse `present.ts`'s alias model. |
-| **2** | **MCP handoff in studio** | Surface the URL + bearer token + framework. Pillage `mcp-access-card`. The actual deliverable. |
+| **1** | ✅ **Studio→rows translator — BUILT** | `src/lib/studio/translate.ts` + `writeThemeRows()` in `src/app/studio/actions.ts` now write alias-aware `tokens`/`token_values`/`modes` on every save. Verified against the MCP's own resolver (100 vars/mode, 0 unmapped). **Remaining:** confirm the live authenticated Save → deployed MCP round-trip (needs a test login). |
+| **2** | ⬅️ **MCP handoff in studio** — NEXT | Surface the URL + bearer token + framework. Pillage `mcp-access-card`. The actual deliverable. |
 | **3** | **Enforce gating** | Wire `getEntitlements()` (`src/lib/plan.ts`) into export / MCP / save-count per FREEMIUM-GATING-PLAN.md. |
 | **4** | **Anonymous draft + claim-on-signup** | localStorage autosave, "not saved to your account" banner, migrate draft into the account at signup. |
 | **5** | **Billing / payment** | trial→paid has no payment path yet (`upgrade-promo` is a dead button); the reverse trial can't convert without it. |
@@ -49,5 +51,7 @@ gated). **4–6** are the conversion/polish layer.
 - Freemium foundation: migration 008 (`profiles.trial_ends_at` + 14-day trial in
   `handle_new_user()`, applied to remote), regenerated types, and the
   `getEntitlements()` gating helper (not yet enforced anywhere — that's item 3).
-- Studio persistence: `studio_config` save/load/list/delete (recipe only — see the
-  blocker above).
+- Studio persistence: `studio_config` save/load/list/delete, **plus** the
+  studio→rows translator (build #1) — saving now writes the normalized token
+  tables the MCP reads. Only the live authenticated Save → deployed MCP
+  round-trip is still unverified (needs a test login).
