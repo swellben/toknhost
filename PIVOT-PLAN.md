@@ -1,5 +1,11 @@
 # MVP pivot plan — status & next steps
 
+> **2026-07-08 — current direction & build order now live in [STUDIO-MVP-PLAN.md](STUDIO-MVP-PLAN.md).**
+> `/dashboard` UI is shelved (code kept as a parts bin); the studio is the whole
+> product; #1 blocker is the studio→rows translator. Access model in
+> [FREEMIUM-GATING-PLAN.md](FREEMIUM-GATING-PLAN.md). Read those first; the sections
+> below remain for architectural background.
+
 ## V0 re-scope as of 2026-07-06 — START HERE
 
 **Decision (2026-07-06):** Pause all front-end and feature work. Step back and rethink the front end and the feature set from scratch. This supersedes the "Not yet built — pick up here" list in the older status section below — do **not** resume those items (radius selector, multi-framework preview slices, dirty-state UI, etc.) until the re-scope is settled.
