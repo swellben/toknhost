@@ -47,6 +47,10 @@ export type ThemeConfig = {
   fontName: string;
   /** User-supplied font details when fontSource === "custom"; else null. */
   customFont: CustomFont | null;
+  /** Raw per-mode overrides for semantic tokens. Un-overridden tokens still
+   * derive (alias) from the primitive ramps so primitive edits keep cascading;
+   * only explicitly-edited tokens store a raw value here. */
+  semanticOverrides: { light: Record<string, string>; dark: Record<string, string> };
 };
 
 export type FontSource = "google" | "custom";
@@ -86,6 +90,7 @@ export const DEFAULT_THEME: ThemeConfig = {
   fontSource: "google",
   fontName: "",
   customFont: null,
+  semanticOverrides: { light: {}, dark: {} },
 };
 
 /** Bounds for the manual spacing-base slider (rem). */
@@ -152,6 +157,23 @@ export const SEED_META: { key: SeedKey; label: string; hint: string }[] = [
   { key: "danger", label: "Danger", hint: "Destructive / error" },
 ];
 
+export const SEED_KEYS: SeedKey[] = SEED_META.map((m) => m.key);
+
+/**
+ * CSS names for the primitive color scales in the export/MCP output —
+ * deliberately DISTINCT from the shadcn semantic role names (primary/secondary/
+ * accent/…) so `--color-brand-500` (primitive) and `--color-primary` (semantic
+ * role) never collide. Semantic tokens `var()`-reference these.
+ */
+export const PRIMITIVE_SCALE_NAME: Record<SeedKey, string> = {
+  primary: "brand",
+  secondary: "brand-secondary",
+  neutral: "neutral",
+  success: "success",
+  warning: "warning",
+  danger: "danger",
+};
+
 export type Ramps = Record<SeedKey, Ramp>;
 
 export function buildRamps(seeds: Record<SeedKey, string>): Ramps {
@@ -166,87 +188,140 @@ export function buildRamps(seeds: Record<SeedKey, string>): Ramps {
 }
 
 /**
- * Map primitive ramps → shadcn semantic role variables for one mode.
- * Semantic roles ALIAS into ramp steps (never raw values) so editing a seed
- * ripples through every role and into the live preview.
+ * Where a semantic token gets its value: an ALIAS to a primitive ramp step
+ * (the design-system-correct default — preserved through export & the MCP so a
+ * consumer gets `--primary: var(--color-primary-600)`, not a hardcoded hex), or
+ * a RAW value (a computed foreground, a literal like #fff, or a user override).
+ */
+export type SemanticSource =
+  | { kind: "alias"; family: SeedKey; step: Step }
+  | { kind: "raw"; value: string };
+
+const alias = (family: SeedKey, step: Step): SemanticSource => ({
+  kind: "alias",
+  family,
+  step,
+});
+const raw = (value: string): SemanticSource => ({ kind: "raw", value });
+
+/**
+ * The canonical semantic → primitive mapping for one mode. This is the single
+ * source of truth for how shadcn roles alias the ramps; resolveSemantic()
+ * (hex, for the preview), the aliased CSS export, and the DB row translator all
+ * derive from it. Foregrounds/literals are `raw` (not primitive-scale aliases).
+ */
+export function semanticSourceMap(
+  r: Ramps,
+  mode: "light" | "dark"
+): Record<string, SemanticSource> {
+  const fg = (hex: string) => raw(aestheticForeground(hex));
+
+  if (mode === "light") {
+    return {
+      background: alias("neutral", 50),
+      foreground: alias("neutral", 950),
+      card: raw("#ffffff"),
+      "card-foreground": alias("neutral", 950),
+      popover: raw("#ffffff"),
+      "popover-foreground": alias("neutral", 950),
+      primary: alias("primary", 600),
+      "primary-foreground": fg(r.primary[600]),
+      secondary: alias("secondary", 100),
+      "secondary-foreground": alias("secondary", 800),
+      muted: alias("neutral", 100),
+      "muted-foreground": alias("neutral", 500),
+      accent: alias("neutral", 100),
+      "accent-foreground": alias("neutral", 900),
+      destructive: alias("danger", 600),
+      "destructive-foreground": fg(r.danger[600]),
+      border: alias("neutral", 200),
+      input: alias("neutral", 200),
+      ring: alias("primary", 500),
+      "chart-1": alias("primary", 500),
+      "chart-2": alias("secondary", 500),
+      "chart-3": alias("success", 500),
+      "chart-4": alias("warning", 500),
+      "chart-5": alias("danger", 500),
+      sidebar: alias("neutral", 50),
+      "sidebar-foreground": alias("neutral", 900),
+      "sidebar-primary": alias("primary", 600),
+      "sidebar-primary-foreground": fg(r.primary[600]),
+      "sidebar-accent": alias("neutral", 100),
+      "sidebar-accent-foreground": alias("neutral", 900),
+      "sidebar-border": alias("neutral", 200),
+      "sidebar-ring": alias("primary", 500),
+    };
+  }
+
+  return {
+    background: alias("neutral", 950),
+    foreground: alias("neutral", 50),
+    card: alias("neutral", 900),
+    "card-foreground": alias("neutral", 50),
+    popover: alias("neutral", 900),
+    "popover-foreground": alias("neutral", 50),
+    primary: alias("primary", 500),
+    "primary-foreground": fg(r.primary[500]),
+    secondary: alias("secondary", 900),
+    "secondary-foreground": alias("secondary", 100),
+    muted: alias("neutral", 800),
+    "muted-foreground": alias("neutral", 400),
+    accent: alias("neutral", 800),
+    "accent-foreground": alias("neutral", 100),
+    destructive: alias("danger", 500),
+    "destructive-foreground": fg(r.danger[500]),
+    border: alias("neutral", 800),
+    input: alias("neutral", 800),
+    ring: alias("primary", 400),
+    "chart-1": alias("primary", 400),
+    "chart-2": alias("secondary", 400),
+    "chart-3": alias("success", 400),
+    "chart-4": alias("warning", 400),
+    "chart-5": alias("danger", 400),
+    sidebar: alias("neutral", 900),
+    "sidebar-foreground": alias("neutral", 100),
+    "sidebar-primary": alias("primary", 500),
+    "sidebar-primary-foreground": fg(r.primary[500]),
+    "sidebar-accent": alias("neutral", 800),
+    "sidebar-accent-foreground": alias("neutral", 100),
+    "sidebar-border": alias("neutral", 800),
+    "sidebar-ring": alias("primary", 400),
+  };
+}
+
+/**
+ * Resolve semantic tokens to concrete hex for one mode (used by the live
+ * preview). Derived from semanticSourceMap so it stays in lockstep with the
+ * alias model — output is identical to the old inline table.
  */
 export function resolveSemantic(
   r: Ramps,
   mode: "light" | "dark"
 ): Record<string, string> {
-  const { primary, secondary, neutral, danger, success, warning } = r;
-
-  if (mode === "light") {
-    return {
-      background: neutral[50],
-      foreground: neutral[950],
-      card: "#ffffff",
-      "card-foreground": neutral[950],
-      popover: "#ffffff",
-      "popover-foreground": neutral[950],
-      primary: primary[600],
-      "primary-foreground": aestheticForeground(primary[600]),
-      secondary: secondary[100],
-      "secondary-foreground": secondary[800],
-      muted: neutral[100],
-      "muted-foreground": neutral[500],
-      accent: neutral[100],
-      "accent-foreground": neutral[900],
-      destructive: danger[600],
-      "destructive-foreground": aestheticForeground(danger[600]),
-      border: neutral[200],
-      input: neutral[200],
-      ring: primary[500],
-      "chart-1": primary[500],
-      "chart-2": secondary[500],
-      "chart-3": success[500],
-      "chart-4": warning[500],
-      "chart-5": danger[500],
-      sidebar: neutral[50],
-      "sidebar-foreground": neutral[900],
-      "sidebar-primary": primary[600],
-      "sidebar-primary-foreground": aestheticForeground(primary[600]),
-      "sidebar-accent": neutral[100],
-      "sidebar-accent-foreground": neutral[900],
-      "sidebar-border": neutral[200],
-      "sidebar-ring": primary[500],
-    };
+  const src = semanticSourceMap(r, mode);
+  const out: Record<string, string> = {};
+  for (const [k, s] of Object.entries(src)) {
+    out[k] = s.kind === "alias" ? r[s.family][s.step] : s.value;
   }
+  return out;
+}
 
-  return {
-    background: neutral[950],
-    foreground: neutral[50],
-    card: neutral[900],
-    "card-foreground": neutral[50],
-    popover: neutral[900],
-    "popover-foreground": neutral[50],
-    primary: primary[500],
-    "primary-foreground": aestheticForeground(primary[500]),
-    secondary: secondary[900],
-    "secondary-foreground": secondary[100],
-    muted: neutral[800],
-    "muted-foreground": neutral[400],
-    accent: neutral[800],
-    "accent-foreground": neutral[100],
-    destructive: danger[500],
-    "destructive-foreground": aestheticForeground(danger[500]),
-    border: neutral[800],
-    input: neutral[800],
-    ring: primary[400],
-    "chart-1": primary[400],
-    "chart-2": secondary[400],
-    "chart-3": success[400],
-    "chart-4": warning[400],
-    "chart-5": danger[400],
-    sidebar: neutral[900],
-    "sidebar-foreground": neutral[100],
-    "sidebar-primary": primary[500],
-    "sidebar-primary-foreground": aestheticForeground(primary[500]),
-    "sidebar-accent": neutral[800],
-    "sidebar-accent-foreground": neutral[100],
-    "sidebar-border": neutral[800],
-    "sidebar-ring": primary[400],
+/**
+ * Per-token source for a config + mode, with user overrides applied. An
+ * override becomes a `raw` value — the explicit escape hatch from aliasing.
+ * This is what the aliased export and the DB→rows translator consume.
+ */
+export function semanticSources(
+  cfg: ThemeConfig,
+  mode: "light" | "dark"
+): Record<string, SemanticSource> {
+  const out: Record<string, SemanticSource> = {
+    ...semanticSourceMap(cfg.ramps, mode),
   };
+  for (const [k, v] of Object.entries(cfg.semanticOverrides[mode])) {
+    out[k] = { kind: "raw", value: v };
+  }
+  return out;
 }
 
 export type DerivedTheme = {
@@ -257,12 +332,87 @@ export type DerivedTheme = {
 
 export function deriveTheme(cfg: ThemeConfig): DerivedTheme {
   // Color source of truth is the working ramps (seed-generated OR hand-edited).
+  // Semantic tokens derive (alias) from the ramps, then any explicit per-mode
+  // overrides are layered on top so un-edited tokens keep cascading.
   const ramps = cfg.ramps;
   return {
     ramps,
-    light: resolveSemantic(ramps, "light"),
-    dark: resolveSemantic(ramps, "dark"),
+    light: { ...resolveSemantic(ramps, "light"), ...cfg.semanticOverrides.light },
+    dark: { ...resolveSemantic(ramps, "dark"), ...cfg.semanticOverrides.dark },
   };
+}
+
+/** Names of the semantic tokens the studio manages (the shadcn roles). */
+export const SEMANTIC_TOKEN_NAMES = Object.keys(
+  resolveSemantic(DEFAULT_THEME.ramps, "light")
+);
+
+export type ParsedTokens = {
+  light: Record<string, string>;
+  dark: Record<string, string>;
+  radius?: number;
+  spacing?: number;
+  count: number;
+};
+
+/** Grab the body between the first `{` and its next `}` after a selector. Our
+ * exported blocks are flat (no nesting), so a simple brace scan is enough. */
+function cssBlock(text: string, selector: RegExp): string | null {
+  const m = selector.exec(text);
+  if (!m) return null;
+  const open = text.indexOf("{", m.index);
+  if (open === -1) return null;
+  const close = text.indexOf("}", open);
+  return text.slice(open + 1, close === -1 ? undefined : close);
+}
+
+function remNumber(v: string): number | undefined {
+  const n = parseFloat(v);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+/**
+ * Parse pasted CSS into studio tokens. Reads `:root {}` (light) and `.dark {}`
+ * (dark) custom-property declarations; recognizes the semantic token names plus
+ * `--radius`/`--spacing`. Un-scoped text is treated as light. Unknown props are
+ * ignored. Colors are kept verbatim (hex/oklch/etc.). This round-trips what
+ * buildThemeCss() exports; primitive ramps aren't reconstructed (the export
+ * doesn't carry per-step values), so imported semantics arrive as overrides.
+ */
+export function parseThemeTokens(text: string): ParsedTokens {
+  const names = new Set(SEMANTIC_TOKEN_NAMES);
+  const light: Record<string, string> = {};
+  const dark: Record<string, string> = {};
+  const out: ParsedTokens = { light, dark, count: 0 };
+
+  const readInto = (block: string, target: Record<string, string>) => {
+    const re = /--([a-z0-9-]+)\s*:\s*([^;]+);/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(block))) {
+      const key = m[1].trim();
+      const val = m[2].trim();
+      if (key === "radius") {
+        const n = remNumber(val);
+        if (n !== undefined) { out.radius = n; out.count++; }
+      } else if (key === "spacing") {
+        const n = remNumber(val);
+        if (n !== undefined) { out.spacing = n; out.count++; }
+      } else if (names.has(key) && !val.startsWith("var(")) {
+        // Skip aliased references (e.g. `var(--color-brand-600)`) — without the
+        // primitives they'd be broken overrides; only raw values are imported.
+        target[key] = val;
+        out.count++;
+      }
+    }
+  };
+
+  const root = cssBlock(text, /:root\s*\{/);
+  const darkBlock = cssBlock(text, /\.dark\s*\{/);
+  if (root !== null) readInto(root, light);
+  if (darkBlock !== null) readInto(darkBlock, dark);
+  if (root === null && darkBlock === null) readInto(text, light);
+
+  return out;
 }
 
 /**
@@ -283,9 +433,37 @@ export function previewVars(
   return out;
 }
 
-/** Serialize a mode's variables as CSS custom-property declarations. */
-function declBlock(vars: Record<string, string>, radius?: number): string {
-  const lines = Object.entries(vars).map(([k, v]) => `  --${k}: ${v};`);
+/** CSS value for a semantic source: a var() reference to a primitive scale
+ * (alias) or the raw value (override / computed foreground / literal). */
+function semanticCssValue(s: SemanticSource): string {
+  return s.kind === "alias"
+    ? `var(--color-${PRIMITIVE_SCALE_NAME[s.family]}-${s.step})`
+    : s.value;
+}
+
+/** `@theme` declarations for the primitive color scales (raw values). */
+function primitivesBlock(ramps: Ramps): string {
+  const lines: string[] = [];
+  for (const family of SEED_KEYS) {
+    const scale = PRIMITIVE_SCALE_NAME[family];
+    for (const step of STEPS) {
+      lines.push(`  --color-${scale}-${step}: ${ramps[family][step]};`);
+    }
+  }
+  return lines.join("\n");
+}
+
+/** `:root`/`.dark` semantic declarations — aliases emit as `var()` refs to the
+ * primitives; only explicit overrides (and computed foregrounds) are raw. */
+function semanticBlock(
+  cfg: ThemeConfig,
+  mode: "light" | "dark",
+  radius?: number
+): string {
+  const src = semanticSources(cfg, mode);
+  const lines = Object.entries(src).map(
+    ([name, s]) => `  --${name}: ${semanticCssValue(s)};`
+  );
   if (radius !== undefined) lines.push(`  --radius: ${radius}rem;`);
   return lines.join("\n");
 }
@@ -338,7 +516,12 @@ function slugify(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "font";
 }
 
-/** Produce a copy-pasteable shadcn-style theme.css (`:root` + `.dark` + `@theme inline`). */
+/**
+ * Produce a copy-pasteable, alias-preserving Tailwind v4 + shadcn theme.css:
+ * primitive scales in `@theme`, semantic tokens in `:root`/`.dark` that
+ * `var()`-reference them (only overrides are hardcoded), and the `@theme inline`
+ * role→utility mapping. Design-system-correct — no flattened semantics.
+ */
 export function buildThemeCss(t: DerivedTheme, cfg: ThemeConfig): string {
   const roleNames = Object.keys(t.light);
   const themeInline = roleNames
@@ -352,12 +535,20 @@ export function buildThemeCss(t: DerivedTheme, cfg: ThemeConfig): string {
   return `/* Generated by ToknHost — Design your theme once. Use it everywhere. */
 @import "tailwindcss";
 ${fontPrelude}
-:root {
-${declBlock(t.light, cfg.radius)}
+/* Primitives — raw color scales that the semantic tokens reference. */
+@theme {
+${primitivesBlock(cfg.ramps)}
 }
 
+/* Semantic tokens — alias the primitives above; only your explicit overrides
+   are hardcoded. Light mode. */
+:root {
+${semanticBlock(cfg, "light", cfg.radius)}
+}
+
+/* Dark mode. */
 .dark {
-${declBlock(t.dark)}
+${semanticBlock(cfg, "dark")}
 }
 
 @theme inline {

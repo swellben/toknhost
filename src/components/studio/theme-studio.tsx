@@ -21,12 +21,14 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { materialColorScale } from "@/lib/gap-fill/material";
 import {
@@ -49,6 +51,7 @@ import {
   STEPS,
   buildRamps,
   buildThemeCss,
+  parseThemeTokens,
   deriveTheme,
   type EditMode,
   type FontSource,
@@ -125,10 +128,35 @@ function useThemeHistory(initial: ThemeConfig) {
 }
 
 export function ThemeStudio() {
-  const { config, commit, undo, reset, canUndo } = useThemeHistory(DEFAULT_THEME);
+  const { config, commit, undo, canUndo } = useThemeHistory(DEFAULT_THEME);
   const [nav, setNav] = useState<NavKey>("color");
   const [mode, setMode] = useState<"light" | "dark">("light");
-  const [exportOpen, setExportOpen] = useState(false);
+  const [view, setView] = useState<"studio" | "io">("studio");
+  const [resetOpen, setResetOpen] = useState(false);
+
+  // Reset to defaults (undoable). `keepBrand` preserves the primary & secondary
+  // brand colors (seeds + ramps) and resets everything else.
+  function doReset(keepBrand: boolean) {
+    commit((c) =>
+      keepBrand
+        ? {
+            ...DEFAULT_THEME,
+            colorMode: c.colorMode,
+            seeds: {
+              ...DEFAULT_THEME.seeds,
+              primary: c.seeds.primary,
+              secondary: c.seeds.secondary,
+            },
+            ramps: {
+              ...DEFAULT_THEME.ramps,
+              primary: c.ramps.primary,
+              secondary: c.ramps.secondary,
+            },
+          }
+        : DEFAULT_THEME
+    );
+    setResetOpen(false);
+  }
 
   const theme = useMemo(() => deriveTheme(config), [config]);
 
@@ -141,6 +169,12 @@ export function ThemeStudio() {
       loadCustomFont(config.customFont);
     }
   }, [config.fontSource, config.fontName, config.customFont]);
+
+  // Selecting a token category also returns to the editor (from Import/Export).
+  function goToEditor(key: NavKey) {
+    setNav(key);
+    setView("studio");
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -164,16 +198,12 @@ export function ThemeStudio() {
             <Undo2 /> Undo
           </Button>
           <ModeToggle mode={mode} onChange={setMode} />
-          <Button size="sm" onClick={() => setExportOpen(true)}>
-            <Download /> Export
-          </Button>
         </div>
       </header>
 
-      {/* Three panes */}
-      <div className="grid min-h-0 flex-1 grid-cols-[220px_320px_1fr]">
-        {/* Left rail */}
-        <nav className="flex min-h-0 flex-col justify-between border-r border-border p-3">
+      <div className="flex min-h-0 flex-1">
+        {/* Left rail — persistent across the editor AND import/export views */}
+        <nav className="flex w-[220px] shrink-0 flex-col justify-between border-r border-border p-3">
           <div className="flex flex-col gap-4">
             <NavGroup title="Primitives">
               {PRIMITIVE_NAV.map((item) => (
@@ -181,17 +211,17 @@ export function ThemeStudio() {
                   key={item.key}
                   icon={item.icon}
                   label={item.label}
-                  active={nav === item.key}
-                  onClick={() => setNav(item.key)}
+                  active={view === "studio" && nav === item.key}
+                  onClick={() => goToEditor(item.key)}
                 />
               ))}
             </NavGroup>
             <NavGroup title="Semantic tokens">
               <NavItem
                 icon={Layers}
-                label="Roles"
-                active={nav === "semantic"}
-                onClick={() => setNav("semantic")}
+                label="Tokens"
+                active={view === "studio" && nav === "semantic"}
+                onClick={() => goToEditor("semantic")}
               />
             </NavGroup>
           </div>
@@ -206,38 +236,116 @@ export function ThemeStudio() {
             <NavItem
               icon={Download}
               label="Import / Export"
-              onClick={() => setExportOpen(true)}
+              active={view === "io"}
+              onClick={() => setView("io")}
             />
-            <NavItem icon={RotateCcw} label="Reset all" onClick={reset} />
+            <NavItem
+              icon={RotateCcw}
+              label="Reset all"
+              onClick={() => setResetOpen(true)}
+            />
             <NavItem icon={Settings} label="Settings" disabled />
           </div>
         </nav>
 
-        {/* Middle editor */}
-        <section className="min-h-0 overflow-y-auto border-r border-border p-4">
-          {nav === "color" && <ColorEditor config={config} commit={commit} />}
-          {nav === "typography" && (
-            <TypographyEditor config={config} commit={commit} />
-          )}
-          {nav === "spacing" && (
-            <SpacingEditor config={config} commit={commit} />
-          )}
-          {nav === "radius" && <RadiusEditor config={config} commit={commit} />}
-          {nav === "semantic" && <SemanticList theme={theme} mode={mode} />}
-        </section>
+        {/* Content area — swaps between the token editor+preview and import/export */}
+        {view === "io" ? (
+          <ImportExportPanel config={config} theme={theme} commit={commit} />
+        ) : (
+          <div className="grid min-h-0 flex-1 grid-cols-[320px_1fr]">
+            {/* Middle editor (the secondary token sub-nav) */}
+            <section className="min-h-0 overflow-y-auto border-r border-border p-4">
+              {nav === "color" && (
+                <ColorEditor config={config} commit={commit} />
+              )}
+              {nav === "typography" && (
+                <TypographyEditor config={config} commit={commit} />
+              )}
+              {nav === "spacing" && (
+                <SpacingEditor config={config} commit={commit} />
+              )}
+              {nav === "radius" && (
+                <RadiusEditor config={config} commit={commit} />
+              )}
+              {nav === "semantic" && (
+                <SemanticEditor theme={theme} config={config} commit={commit} />
+              )}
+            </section>
 
-        {/* Right preview */}
-        <section className="min-h-0 overflow-y-auto bg-muted/30 p-6">
-          <ThemePreview theme={theme} config={config} mode={mode} />
-        </section>
+            {/* Right preview */}
+            <section className="min-h-0 overflow-y-auto bg-muted/30 p-6">
+              <ThemePreview theme={theme} config={config} mode={mode} />
+            </section>
+          </div>
+        )}
       </div>
 
-      <ExportDialog
-        open={exportOpen}
-        onOpenChange={setExportOpen}
-        css={buildThemeCss(theme, config)}
+      <ResetDialog
+        open={resetOpen}
+        onOpenChange={setResetOpen}
+        onConfirm={doReset}
       />
     </div>
+  );
+}
+
+/* ---------- Reset confirmation dialog ---------- */
+
+function ResetDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onConfirm: (keepBrand: boolean) => void;
+}) {
+  const [keepBrand, setKeepBrand] = useState(false);
+
+  // Default the checkbox off each time the dialog opens.
+  useEffect(() => {
+    if (open) setKeepBrand(false);
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Reset theme?</DialogTitle>
+          <DialogDescription>
+            This discards your changes and restores the defaults. You can still
+            Undo afterwards.
+          </DialogDescription>
+        </DialogHeader>
+
+        <button
+          type="button"
+          onClick={() => setKeepBrand((v) => !v)}
+          className="flex items-center gap-2 text-left text-sm"
+        >
+          <span
+            className={cn(
+              "flex size-4 shrink-0 items-center justify-center rounded-sm border transition-colors",
+              keepBrand
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border"
+            )}
+          >
+            {keepBrand && <Check className="size-3" strokeWidth={3} />}
+          </span>
+          Keep my brand colors (primary &amp; secondary), reset everything else
+        </button>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={() => onConfirm(keepBrand)}>
+            {keepBrand ? "Reset the rest" : "Reset all"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1068,37 +1176,151 @@ function ManualRadius({
   );
 }
 
-/* ---------- Semantic roles list ---------- */
+/* ---------- Semantic tokens editor ---------- */
 
-function SemanticList({
+function SemanticEditor({
   theme,
-  mode,
+  config,
+  commit,
 }: {
   theme: ReturnType<typeof deriveTheme>;
-  mode: "light" | "dark";
+  config: ThemeConfig;
+  commit: Commit;
 }) {
-  const vars = mode === "light" ? theme.light : theme.dark;
+  const names = Object.keys(theme.light);
+  const overrideCount =
+    Object.keys(config.semanticOverrides.light).length +
+    Object.keys(config.semanticOverrides.dark).length;
+
+  function setVar(m: "light" | "dark", name: string, value: string) {
+    commit(
+      (c) => ({
+        ...c,
+        semanticOverrides: {
+          ...c.semanticOverrides,
+          [m]: { ...c.semanticOverrides[m], [name]: value },
+        },
+      }),
+      `sem:${m}:${name}`
+    );
+  }
+
+  function clearVar(m: "light" | "dark", name: string) {
+    commit((c) => {
+      const next = { ...c.semanticOverrides[m] };
+      delete next[name];
+      return { ...c, semanticOverrides: { ...c.semanticOverrides, [m]: next } };
+    });
+  }
+
+  function clearAll() {
+    commit((c) => ({ ...c, semanticOverrides: { light: {}, dark: {} } }));
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      <div>
-        <h2 className="text-sm font-semibold">Semantic roles</h2>
-        <p className="text-xs text-muted-foreground">
-          shadcn roles, resolved for {mode} mode. Each aliases a primitive.
-        </p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold">Semantic tokens</h2>
+          <p className="text-xs text-muted-foreground">
+            shadcn tokens, light &amp; dark side by side. Un-edited tokens alias
+            your primitives.
+          </p>
+        </div>
+        {overrideCount > 0 && (
+          <button
+            type="button"
+            onClick={clearAll}
+            className="shrink-0 rounded-md border border-border px-2 py-1 text-xs whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground"
+            title={`Revert all ${overrideCount} edited values`}
+          >
+            Revert all
+          </button>
+        )}
       </div>
-      <div className="flex flex-col divide-y divide-border rounded-md border border-border">
-        {Object.entries(vars).map(([name, value]) => (
-          <div key={name} className="flex items-center gap-2 px-2.5 py-1.5">
-            <span
-              className="size-4 shrink-0 rounded-sm border border-border"
-              style={{ background: value }}
+      <div className="rounded-md border border-border">
+        {/* Column header */}
+        <div className="flex items-center gap-2 px-2.5 py-1.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+          <span className="flex-1">Token</span>
+          <span className="flex w-8 justify-center" title="Light mode">
+            <Sun className="size-3.5" />
+          </span>
+          <span className="flex w-8 justify-center" title="Dark mode">
+            <Moon className="size-3.5" />
+          </span>
+        </div>
+        {names.map((name) => (
+          <div
+            key={name}
+            className="flex items-center gap-2 border-t border-border px-2.5 py-1.5"
+          >
+            <span className="flex-1 text-sm">{name}</span>
+            <SwatchCell
+              value={theme.light[name]}
+              overridden={name in config.semanticOverrides.light}
+              onChange={(v) => setVar("light", name, v)}
+              onRevert={() => clearVar("light", name)}
+              ariaLabel={`${name} light`}
             />
-            <span className="flex-1 truncate text-sm">{name}</span>
-            <span className="font-mono text-xs text-muted-foreground">
-              {value}
-            </span>
+            <SwatchCell
+              value={theme.dark[name]}
+              overridden={name in config.semanticOverrides.dark}
+              onChange={(v) => setVar("dark", name, v)}
+              onRevert={() => clearVar("dark", name)}
+              ariaLabel={`${name} dark`}
+            />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function SwatchCell({
+  value,
+  overridden,
+  onChange,
+  onRevert,
+  ariaLabel,
+}: {
+  value: string;
+  overridden: boolean;
+  onChange: (v: string) => void;
+  onRevert: () => void;
+  ariaLabel: string;
+}) {
+  return (
+    <div className="group relative flex w-8 justify-center">
+      {/* Swatch only by default; ring marks an overridden value. */}
+      <label
+        className={cn(
+          "relative block size-6 overflow-hidden rounded-sm border",
+          overridden ? "border-primary ring-1 ring-primary" : "border-border"
+        )}
+      >
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="absolute inset-0 size-full cursor-pointer"
+          aria-label={ariaLabel}
+        />
+      </label>
+      {/* Hover reveals hex + revert. The panel sits flush against the group's
+          top edge (pb-1 for visual gap) so the hover stays continuous. */}
+      <div className="absolute bottom-full left-1/2 z-30 hidden -translate-x-1/2 flex-col items-center pb-1 group-hover:flex">
+        <span className="rounded bg-popover px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap text-popover-foreground shadow-md ring-1 ring-border">
+          {value}
+        </span>
+        {overridden && (
+          <button
+            type="button"
+            onClick={onRevert}
+            className="mt-0.5 flex items-center gap-0.5 rounded bg-popover px-1.5 py-0.5 text-[10px] whitespace-nowrap text-muted-foreground shadow-md ring-1 ring-border transition-colors hover:text-foreground"
+          >
+            <RotateCcw className="size-2.5" /> revert
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1139,18 +1361,24 @@ function ModeToggle({
   );
 }
 
-/* ---------- Export dialog ---------- */
+/* ---------- Import / Export content panel (fills the area beside the rail) ---------- */
 
-function ExportDialog({
-  open,
-  onOpenChange,
-  css,
+function ImportExportPanel({
+  config,
+  theme,
+  commit,
 }: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  css: string;
+  config: ThemeConfig;
+  theme: ReturnType<typeof deriveTheme>;
+  commit: Commit;
 }) {
+  const css = buildThemeCss(theme, config);
+  const [paste, setPaste] = useState("");
   const [copied, setCopied] = useState(false);
+  const [importMsg, setImportMsg] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
 
   async function copy() {
     try {
@@ -1162,30 +1390,99 @@ function ExportDialog({
     }
   }
 
+  function doImport() {
+    const parsed = parseThemeTokens(paste);
+    if (parsed.count === 0) {
+      setImportMsg({
+        ok: false,
+        text: "No recognizable tokens found — paste a theme.css or a :root { --… } block.",
+      });
+      return;
+    }
+    commit((c) => ({
+      ...c,
+      ...(parsed.radius !== undefined
+        ? { radius: parsed.radius, radiusMode: "manual" as const }
+        : {}),
+      ...(parsed.spacing !== undefined
+        ? { spacing: parsed.spacing, spacingMode: "manual" as const }
+        : {}),
+      semanticOverrides: {
+        light: { ...c.semanticOverrides.light, ...parsed.light },
+        dark: { ...c.semanticOverrides.dark, ...parsed.dark },
+      },
+    }));
+    const modes = [
+      Object.keys(parsed.light).length ? "light" : null,
+      Object.keys(parsed.dark).length ? "dark" : null,
+    ]
+      .filter(Boolean)
+      .join(" + ");
+    setImportMsg({
+      ok: true,
+      text: `Imported ${parsed.count} tokens${modes ? ` (${modes})` : ""}. Open a token category to see them.`,
+    });
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Export theme.css</DialogTitle>
-          <DialogDescription>
-            Drop this into your app&apos;s CSS. Works with Tailwind v4 + shadcn.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="relative">
-          <Button
-            size="sm"
-            variant="outline"
-            className="absolute top-2 right-2 z-10"
-            onClick={copy}
-          >
-            {copied ? <Check /> : <Copy />}
-            {copied ? "Copied" : "Copy"}
-          </Button>
-          <pre className="max-h-[50vh] overflow-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-xs leading-relaxed">
+    <div className="grid min-h-0 flex-1 grid-cols-2 gap-6 overflow-hidden p-6">
+        {/* Import */}
+        <section className="flex min-h-0 flex-col gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">Import</h2>
+            <p className="text-xs text-muted-foreground">
+              Paste a theme.css or a{" "}
+              <code className="rounded bg-muted px-1">:root {"{ --… }"}</code>{" "}
+              block. Semantic tokens, <code className="rounded bg-muted px-1">--radius</code>{" "}
+              and <code className="rounded bg-muted px-1">--spacing</code> are
+              applied (light from <code className="rounded bg-muted px-1">:root</code>,
+              dark from <code className="rounded bg-muted px-1">.dark</code>).
+            </p>
+          </div>
+          <Textarea
+            value={paste}
+            onChange={(e) => {
+              setPaste(e.target.value);
+              setImportMsg(null);
+            }}
+            placeholder={":root {\n  --primary: #4f46e5;\n  --radius: 0.625rem;\n}"}
+            className="min-h-0 flex-1 resize-none font-mono text-xs"
+          />
+          <div className="flex items-center gap-3">
+            <Button size="sm" onClick={doImport} disabled={!paste.trim()}>
+              Import tokens
+            </Button>
+            {importMsg && (
+              <span
+                className={cn(
+                  "text-xs",
+                  importMsg.ok ? "text-foreground" : "text-destructive"
+                )}
+              >
+                {importMsg.text}
+              </span>
+            )}
+          </div>
+        </section>
+
+        {/* Export */}
+        <section className="flex min-h-0 flex-col gap-3">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold">Export</h2>
+              <p className="text-xs text-muted-foreground">
+                Copy this theme.css — Tailwind v4 + shadcn.
+              </p>
+            </div>
+            <Button size="sm" variant="outline" onClick={copy}>
+              {copied ? <Check /> : <Copy />}
+              {copied ? "Copied" : "Copy"}
+            </Button>
+          </div>
+          <pre className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-xs leading-relaxed">
             {css}
           </pre>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </section>
+    </div>
   );
 }

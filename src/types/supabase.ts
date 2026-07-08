@@ -138,6 +138,7 @@ export type Database = {
           mcp_token: string
           name: string
           slug: string
+          studio_config: Json | null
           target_framework: string
           updated_at: string
           user_id: string
@@ -150,6 +151,7 @@ export type Database = {
           mcp_token?: string
           name: string
           slug: string
+          studio_config?: Json | null
           target_framework?: string
           updated_at?: string
           user_id: string
@@ -162,6 +164,7 @@ export type Database = {
           mcp_token?: string
           name?: string
           slug?: string
+          studio_config?: Json | null
           target_framework?: string
           updated_at?: string
           user_id?: string
