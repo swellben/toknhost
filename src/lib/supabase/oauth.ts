@@ -4,13 +4,12 @@ import { createClient } from "@/lib/supabase/client";
 
 /** OAuth providers we surface. Each must also be enabled + configured in the
  * Supabase dashboard (provider OAuth app credentials + redirect URLs). */
-export type OAuthProvider = "google" | "github" | "figma" | "apple";
+export type OAuthProvider = "google" | "github" | "figma";
 
 export const OAUTH_PROVIDERS: { id: OAuthProvider; label: string }[] = [
   { id: "google", label: "Google" },
   { id: "github", label: "GitHub" },
   { id: "figma", label: "Figma" },
-  { id: "apple", label: "Apple" },
 ];
 
 /**
