@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Download,
   Moon,
@@ -17,8 +17,11 @@ import {
   Undo2,
   Wand2,
   SlidersHorizontal,
+  ChevronDown,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { UserMenu } from "@/components/user-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -39,6 +42,13 @@ import {
   isStylesheetUrl,
 } from "@/lib/studio/google-font-loader";
 import { FontPicker } from "@/components/studio/font-picker";
+import type { StudioDesignSystem } from "@/lib/studio/persist";
+import {
+  listStudioDesignSystems,
+  getStudioConfig,
+  createStudioDesignSystem,
+  saveStudioConfig,
+} from "@/app/studio/actions";
 import {
   DEFAULT_THEME,
   RADIUS_OPTIONS,
@@ -79,6 +89,12 @@ const PRIMITIVE_NAV: { key: NavKey; label: string; icon: typeof Palette }[] = [
 ];
 
 /* ---------- Undo/reset history ---------- */
+
+/** Stable key for a (name, config) pair — used to detect real changes for
+ * autosave and to tell a pristine draft from an edited one. */
+function snapshotKey(name: string, config: ThemeConfig): string {
+  return JSON.stringify([name, config]);
+}
 
 type History = { config: ThemeConfig; past: ThemeConfig[]; lastKey: string | null };
 
@@ -124,15 +140,128 @@ function useThemeHistory(initial: ThemeConfig) {
     );
   }, []);
 
-  return { config: hist.config, commit, undo, reset, canUndo: hist.past.length > 0 };
+  // Replace the whole editor state (e.g. loading a saved design system or
+  // starting a new one) — clears the undo history since it's a fresh document.
+  const load = useCallback((cfg: ThemeConfig) => {
+    setHist({ config: cfg, past: [], lastKey: null });
+  }, []);
+
+  return {
+    config: hist.config,
+    commit,
+    undo,
+    reset,
+    load,
+    canUndo: hist.past.length > 0,
+  };
 }
 
-export function ThemeStudio() {
-  const { config, commit, undo, canUndo } = useThemeHistory(DEFAULT_THEME);
+export function ThemeStudio({ userEmail }: { userEmail?: string }) {
+  const { config, commit, undo, load, canUndo } = useThemeHistory(DEFAULT_THEME);
   const [nav, setNav] = useState<NavKey>("color");
   const [mode, setMode] = useState<"light" | "dark">("light");
   const [view, setView] = useState<"studio" | "io">("studio");
   const [resetOpen, setResetOpen] = useState(false);
+
+  // Persistence: the loaded design system, its name, the switcher list, the
+  // "new" dialog, and autosave status. There is no manual Save — edits and
+  // renames autosave into the loaded theme; a new theme is created (named) via
+  // the New dialog.
+  const [currentId, setCurrentId] = useState<string | null>(null);
+  const [name, setName] = useState("Untitled theme");
+  const [systems, setSystems] = useState<StudioDesignSystem[]>([]);
+  const [newOpen, setNewOpen] = useState(false);
+  const [save, setSave] = useState<
+    { state: "idle" | "saving" | "saved" } | { state: "error"; message: string }
+  >({ state: "idle" });
+  // Key of the last-persisted (name, config) so autosave only fires on real changes.
+  const lastSaved = useRef(snapshotKey("Untitled theme", DEFAULT_THEME));
+  const didInit = useRef(false);
+
+  const refreshSystems = useCallback(async () => {
+    try {
+      setSystems(await listStudioDesignSystems());
+    } catch {
+      /* not signed in / offline — leave the list empty */
+    }
+  }, []);
+
+  // On mount, open the most-recently-edited theme so edits autosave into it.
+  useEffect(() => {
+    (async () => {
+      let list: StudioDesignSystem[] = [];
+      try {
+        list = await listStudioDesignSystems();
+      } catch {
+        /* anonymous / offline */
+      }
+      setSystems(list);
+      if (didInit.current) return;
+      didInit.current = true;
+      if (list.length === 0) return;
+      const res = await getStudioConfig(list[0].id);
+      if ("error" in res) return;
+      load(res.config);
+      setCurrentId(list[0].id);
+      setName(res.name);
+      lastSaved.current = snapshotKey(res.name, res.config);
+    })();
+  }, [load]);
+
+  // Debounced autosave for the loaded theme — renames + edits persist with no
+  // Save button.
+  useEffect(() => {
+    if (!currentId) return;
+    if (snapshotKey(name, config) === lastSaved.current) return;
+    const t = setTimeout(async () => {
+      setSave({ state: "saving" });
+      const res = await saveStudioConfig(currentId, name, config);
+      if ("error" in res) {
+        setSave({ state: "error", message: res.error });
+        return;
+      }
+      lastSaved.current = snapshotKey(name, config);
+      setSave({ state: "saved" });
+      refreshSystems();
+      setTimeout(
+        () => setSave((s) => (s.state === "saved" ? { state: "idle" } : s)),
+        1200
+      );
+    }, 800);
+    return () => clearTimeout(t);
+  }, [config, name, currentId, refreshSystems]);
+
+  async function selectSystem(id: string) {
+    const res = await getStudioConfig(id);
+    if ("error" in res) {
+      setSave({ state: "error", message: res.error });
+      return;
+    }
+    load(res.config);
+    setCurrentId(id);
+    setName(res.name);
+    lastSaved.current = snapshotKey(res.name, res.config);
+    setView("studio");
+    setSave({ state: "idle" });
+  }
+
+  // Create a brand-new named design system with fresh default colors, and
+  // select it — subsequent edits autosave into it.
+  async function createNamed(themeName: string) {
+    const res = await createStudioDesignSystem(themeName, DEFAULT_THEME);
+    setNewOpen(false);
+    if ("error" in res) {
+      setSave({ state: "error", message: res.error });
+      return;
+    }
+    load(DEFAULT_THEME);
+    setCurrentId(res.id);
+    setName(themeName);
+    lastSaved.current = snapshotKey(themeName, DEFAULT_THEME);
+    setView("studio");
+    setSave({ state: "idle" });
+    refreshSystems();
+  }
 
   // Reset to defaults (undoable). `keepBrand` preserves the primary & secondary
   // brand colors (seeds + ramps) and resets everything else.
@@ -183,11 +312,30 @@ export function ThemeStudio() {
         <div className="flex items-center gap-2">
           <div className="size-5 rounded-md bg-primary" />
           <span className="text-sm font-semibold">Tokn.Host</span>
-          <span className="ml-2 text-sm text-muted-foreground">
-            Untitled theme
-          </span>
+          <div className="mx-1 h-4 w-px bg-border" />
+          <SystemSwitcher
+            name={name}
+            onName={setName}
+            systems={systems}
+            currentId={currentId}
+            onSelect={selectSystem}
+            onNew={() => setNewOpen(true)}
+          />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {save.state === "error" ? (
+            <span className="max-w-56 truncate text-xs text-destructive">
+              {save.message}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              {save.state === "saving"
+                ? "Saving…"
+                : save.state === "saved"
+                  ? "Saved"
+                  : ""}
+            </span>
+          )}
           <Button
             size="sm"
             variant="ghost"
@@ -198,6 +346,12 @@ export function ThemeStudio() {
             <Undo2 /> Undo
           </Button>
           <ModeToggle mode={mode} onChange={setMode} />
+          {userEmail && (
+            <>
+              <div className="mx-1 h-4 w-px bg-border" />
+              <UserMenu email={userEmail} />
+            </>
+          )}
         </div>
       </header>
 
@@ -285,7 +439,73 @@ export function ThemeStudio() {
         onOpenChange={setResetOpen}
         onConfirm={doReset}
       />
+
+      <NewThemeDialog
+        open={newOpen}
+        onOpenChange={setNewOpen}
+        onCreate={createNamed}
+      />
     </div>
+  );
+}
+
+/* ---------- New design system dialog ---------- */
+
+function NewThemeDialog({
+  open,
+  onOpenChange,
+  onCreate,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onCreate: (name: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setValue("");
+      setCreating(false);
+    }
+  }, [open]);
+
+  const trimmed = value.trim();
+
+  function submit() {
+    if (!trimmed || creating) return;
+    setCreating(true);
+    onCreate(trimmed);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New design system</DialogTitle>
+          <DialogDescription>
+            Name your theme. It starts from a fresh set of default colors.
+          </DialogDescription>
+        </DialogHeader>
+        <Input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+          placeholder="e.g. Acme Brand"
+        />
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={!trimmed || creating}>
+            {creating ? "Creating…" : "Create"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -346,6 +566,97 @@ function ResetDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/* ---------- Design-system switcher ---------- */
+
+function SystemSwitcher({
+  name,
+  onName,
+  systems,
+  currentId,
+  onSelect,
+  onNew,
+}: {
+  name: string;
+  onName: (v: string) => void;
+  systems: StudioDesignSystem[];
+  currentId: string | null;
+  onSelect: (id: string) => void;
+  onNew: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative flex items-center">
+      <input
+        value={name}
+        onChange={(e) => onName(e.target.value)}
+        aria-label="Design system name"
+        className="w-40 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm transition-colors hover:border-border focus:border-border focus:outline-none"
+      />
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        title="Switch design system"
+        className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <ChevronDown className="size-4" />
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 z-30 mt-1 w-56 overflow-hidden rounded-md border border-border bg-popover p-1 shadow-lg">
+          <div className="px-2 py-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+            Your themes
+          </div>
+          {systems.length === 0 ? (
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">
+              None saved yet
+            </div>
+          ) : (
+            systems.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  onSelect(s.id);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted",
+                  s.id === currentId && "bg-muted/60"
+                )}
+              >
+                <span className="truncate">{s.name}</span>
+                {s.id === currentId && <Check className="size-3.5 shrink-0" />}
+              </button>
+            ))
+          )}
+          <div className="my-1 border-t border-border" />
+          <button
+            type="button"
+            onClick={() => {
+              onNew();
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
+          >
+            <Plus className="size-3.5" /> New design system
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

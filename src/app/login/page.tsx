@@ -1,7 +1,12 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { login, signup, type AuthActionResult } from "./actions";
+import {
+  OAUTH_PROVIDERS,
+  signInWithProvider,
+  type OAuthProvider,
+} from "@/lib/supabase/oauth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +31,24 @@ export default function LoginPage() {
     initialState
   );
 
-  const message = loginState?.error ?? signupState?.error;
+  const [oauthError, setOauthError] = useState<string>();
+  const [oauthPending, startOAuth] = useTransition();
+  const [activeProvider, setActiveProvider] = useState<OAuthProvider>();
+
+  function handleOAuth(provider: OAuthProvider) {
+    setOauthError(undefined);
+    setActiveProvider(provider);
+    startOAuth(async () => {
+      const { error } = await signInWithProvider(provider);
+      if (error) {
+        setOauthError(error);
+        setActiveProvider(undefined);
+      }
+      // On success the browser is redirected to the provider, so no cleanup here.
+    });
+  }
+
+  const message = oauthError ?? loginState?.error ?? signupState?.error;
 
   return (
     <div className="flex min-h-svh items-center justify-center p-4">
@@ -77,6 +99,30 @@ export default function LoginPage() {
               </Button>
             </div>
           </form>
+
+          <div className="my-4 flex items-center gap-3">
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">
+              Or continue with
+            </span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {OAUTH_PROVIDERS.map((provider) => (
+              <Button
+                key={provider.id}
+                type="button"
+                variant="outline"
+                onClick={() => handleOAuth(provider.id)}
+                disabled={oauthPending}
+              >
+                {oauthPending && activeProvider === provider.id
+                  ? "Redirecting…"
+                  : provider.label}
+              </Button>
+            ))}
+          </div>
         </CardContent>
         <CardFooter className="text-xs text-muted-foreground">
           New here? Use Sign up, then confirm your email.

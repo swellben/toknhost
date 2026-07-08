@@ -25,7 +25,7 @@ export async function login(
   }
 
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+  redirect("/studio");
 }
 
 export async function signup(
