@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getEntitlements } from "@/lib/plan";
 import type { ThemeConfig } from "@/lib/studio/theme";
 import { translateThemeToRows } from "@/lib/studio/translate";
 import {
@@ -165,12 +166,28 @@ export async function getStudioConfig(
 export async function createStudioDesignSystem(
   name: string,
   config: ThemeConfig
-): Promise<{ id: string } | { error: string }> {
+): Promise<{ id: string } | { error: string; code?: "limit" }> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "You need to be signed in to save." };
+
+  // Enforce the plan's design-system cap (free = 1, premium = unlimited). This
+  // is the authoritative gate — the client also disables the create affordance
+  // at the limit, but that's only an affordance. RLS scopes the count to the
+  // caller. See FREEMIUM-GATING-PLAN.md.
+  const entitlements = await getEntitlements();
+  const { count } = await supabase
+    .from("design_systems")
+    .select("id", { count: "exact", head: true });
+  if ((count ?? 0) >= entitlements.maxDesignSystems) {
+    return {
+      error:
+        "The free plan is limited to one design system. Upgrade to create more.",
+      code: "limit",
+    };
+  }
 
   const trimmed = name.trim() || "Untitled theme";
   const slug = await uniqueSlug(supabase, trimmed);

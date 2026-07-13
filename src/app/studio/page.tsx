@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ThemeStudio } from "@/components/studio/theme-studio";
 import { createClient } from "@/lib/supabase/server";
+import { getEntitlements } from "@/lib/plan";
 
 export const metadata: Metadata = {
   title: "Theme Studio — ToknHost",
@@ -14,11 +15,16 @@ export default async function StudioPage() {
   const { data } = await supabase.auth.getClaims();
   const userEmail = data?.claims?.email as string | undefined;
 
+  // Entitlements drive the free/premium affordances in the editor (export lock,
+  // design-system cap). The server actions re-check server-side; this is just
+  // for the UI. See FREEMIUM-GATING-PLAN.md.
+  const entitlements = await getEntitlements();
+
   // h-svh + overflow-hidden pins the workspace to the viewport so only the
   // inner panes scroll, never the page itself.
   return (
     <div className="h-svh overflow-hidden">
-      <ThemeStudio userEmail={userEmail} />
+      <ThemeStudio userEmail={userEmail} entitlements={entitlements} />
     </div>
   );
 }

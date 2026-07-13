@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { UserMenu } from "@/components/user-menu";
 import { McpPanel } from "@/components/studio/mcp-panel";
+import type { Entitlements } from "@/lib/plan";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -159,7 +160,13 @@ function useThemeHistory(initial: ThemeConfig) {
   };
 }
 
-export function ThemeStudio({ userEmail }: { userEmail?: string }) {
+export function ThemeStudio({
+  userEmail,
+  entitlements,
+}: {
+  userEmail?: string;
+  entitlements: Entitlements;
+}) {
   const { config, commit, undo, load, canUndo } = useThemeHistory(DEFAULT_THEME);
   const [nav, setNav] = useState<NavKey>("color");
   const [mode, setMode] = useState<"light" | "dark">("light");
@@ -174,6 +181,15 @@ export function ThemeStudio({ userEmail }: { userEmail?: string }) {
   const [name, setName] = useState("Untitled theme");
   const [systems, setSystems] = useState<StudioDesignSystem[]>([]);
   const [newOpen, setNewOpen] = useState(false);
+  const [limitOpen, setLimitOpen] = useState(false);
+  // A signed-in free user at the plan's design-system cap gets an upgrade nudge
+  // instead of the create dialog. Anonymous visitors aren't "at a limit" — they
+  // just need to sign in — so the create dialog still opens for them (Save then
+  // surfaces the sign-in requirement; the draft/claim flow lands in Phase 2).
+  // `createStudioDesignSystem` is the authoritative gate; this is the affordance.
+  const atSystemLimit =
+    entitlements.authenticated &&
+    systems.length >= entitlements.maxDesignSystems;
   const [save, setSave] = useState<
     { state: "idle" | "saving" | "saved" } | { state: "error"; message: string }
   >({ state: "idle" });
@@ -322,7 +338,7 @@ export function ThemeStudio({ userEmail }: { userEmail?: string }) {
             systems={systems}
             currentId={currentId}
             onSelect={selectSystem}
-            onNew={() => setNewOpen(true)}
+            onNew={() => (atSystemLimit ? setLimitOpen(true) : setNewOpen(true))}
           />
         </div>
         <div className="flex items-center gap-3">
@@ -415,7 +431,12 @@ export function ThemeStudio({ userEmail }: { userEmail?: string }) {
         {view === "mcp" ? (
           <McpPanel designSystemId={currentId} />
         ) : view === "io" ? (
-          <ImportExportPanel config={config} theme={theme} commit={commit} />
+          <ImportExportPanel
+            config={config}
+            theme={theme}
+            commit={commit}
+            canExport={entitlements.canExport}
+          />
         ) : (
           <div className="grid min-h-0 flex-1 grid-cols-[320px_1fr]">
             {/* Middle editor (the secondary token sub-nav) */}
@@ -456,7 +477,40 @@ export function ThemeStudio({ userEmail }: { userEmail?: string }) {
         onOpenChange={setNewOpen}
         onCreate={createNamed}
       />
+
+      <UpgradeLimitDialog open={limitOpen} onOpenChange={setLimitOpen} />
     </div>
+  );
+}
+
+/* ---------- Design-system limit / upgrade dialog ---------- */
+
+function UpgradeLimitDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>You&apos;re at your theme limit</DialogTitle>
+          <DialogDescription>
+            The free plan includes one saved design system. Upgrade to create
+            and keep more.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+          {/* Wired to Stripe checkout in Phase 3 (LAUNCH-PLAN.md). */}
+          <Button disabled>Upgrade (coming soon)</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1689,12 +1743,18 @@ function ImportExportPanel({
   config,
   theme,
   commit,
+  canExport,
 }: {
   config: ThemeConfig;
   theme: ReturnType<typeof deriveTheme>;
   commit: Commit;
+  canExport: boolean;
 }) {
-  const css = buildThemeCss(theme, config);
+  // Only build the export payload when the plan permits taking it away — for a
+  // gated user we never render the CSS at all, so there's nothing to lift from
+  // the DOM. Individual values stay visible in the editor (that's using, not
+  // exporting). See FREEMIUM-GATING-PLAN.md.
+  const css = canExport ? buildThemeCss(theme, config) : "";
   const [paste, setPaste] = useState("");
   const [copied, setCopied] = useState(false);
   const [importMsg, setImportMsg] = useState<{
@@ -1796,14 +1856,30 @@ function ImportExportPanel({
                 Copy this theme.css — Tailwind v4 + shadcn.
               </p>
             </div>
-            <Button size="sm" variant="outline" onClick={copy}>
-              {copied ? <Check /> : <Copy />}
-              {copied ? "Copied" : "Copy"}
-            </Button>
+            {canExport && (
+              <Button size="sm" variant="outline" onClick={copy}>
+                {copied ? <Check /> : <Copy />}
+                {copied ? "Copied" : "Copy"}
+              </Button>
+            )}
           </div>
-          <pre className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-xs leading-relaxed">
-            {css}
-          </pre>
+          {canExport ? (
+            <pre className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-xs leading-relaxed">
+              {css}
+            </pre>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/20 p-6 text-center">
+              <p className="text-sm font-medium">Exporting is a premium feature</p>
+              <p className="max-w-xs text-xs text-muted-foreground">
+                Upgrade to copy or download your theme.css and other framework
+                formats. You can keep editing and previewing for free.
+              </p>
+              {/* Wired to Stripe checkout in Phase 3 (LAUNCH-PLAN.md). */}
+              <Button size="sm" className="mt-1" disabled>
+                Upgrade (coming soon)
+              </Button>
+            </div>
+          )}
         </section>
     </div>
   );
