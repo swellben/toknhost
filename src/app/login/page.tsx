@@ -166,7 +166,7 @@ export default function LoginPage() {
                 {PROVIDER_ICONS[provider.id]}
                 {oauthPending && activeProvider === provider.id
                   ? "Redirecting…"
-                  : `Continue with ${provider.label}`}
+                  : provider.label}
               </Button>
             ))}
           </div>
