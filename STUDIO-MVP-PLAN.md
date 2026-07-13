@@ -30,12 +30,14 @@ per-framework output and works — the missing half is writing the alias-aware r
 
 ## Build order
 
-> **Progress (2026-07-08): #1 is DONE. Next up = #2 (MCP handoff in studio).**
+> **Progress (2026-07-13): #1 and #2 are DONE. See LAUNCH-PLAN.md for the
+> sequenced finish line (gating → funnel → Stripe → landing → deploy) with the
+> billing/landing decisions baked in.**
 
 | # | Work | Why it's here |
 |---|------|---------------|
 | **1** | ✅ **Studio→rows translator — BUILT** | `src/lib/studio/translate.ts` + `writeThemeRows()` in `src/app/studio/actions.ts` now write alias-aware `tokens`/`token_values`/`modes` on every save. Verified against the MCP's own resolver (100 vars/mode, 0 unmapped). **Remaining:** confirm the live authenticated Save → deployed MCP round-trip (needs a test login). |
-| **2** | ⬅️ **MCP handoff in studio** — NEXT | Surface the URL + bearer token + framework. Pillage `mcp-access-card`. The actual deliverable. |
+| **2** | ✅ **MCP handoff in studio — BUILT** | `studio/mcp-panel.tsx` + `studio/mcp-actions.ts` surface the URL + bearer token + direct-fetch link, gated on `canUseMcp`. Pillaged `mcp-access-card`. (Commit 92010ff.) |
 | **3** | **Enforce gating** | Wire `getEntitlements()` (`src/lib/plan.ts`) into export / MCP / save-count per FREEMIUM-GATING-PLAN.md. |
 | **4** | **Anonymous draft + claim-on-signup** | localStorage autosave, "not saved to your account" banner, migrate draft into the account at signup. |
 | **5** | **Billing / payment** | trial→paid has no payment path yet (`upgrade-promo` is a dead button); the reverse trial can't convert without it. |
