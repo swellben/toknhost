@@ -37,6 +37,51 @@ export function deserializeConfig(raw: unknown): ThemeConfig {
   return mergeConfig(c);
 }
 
+/* ---------- Anonymous draft (localStorage) ---------- */
+
+// The working editor state when it isn't yet backed by a saved design system —
+// persisted client-side so a refresh / navigate-away / return never loses work,
+// and claimed into the account on sign-in. See FREEMIUM-GATING-PLAN.md.
+const DRAFT_KEY = "toknhost:studio-draft";
+
+export type StudioDraft = { name: string; config: ThemeConfig };
+
+/** Persist the current draft. No-ops if localStorage is unavailable. */
+export function saveDraft(name: string, config: ThemeConfig): void {
+  try {
+    localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({ version: STUDIO_CONFIG_VERSION, name, config })
+    );
+  } catch {
+    /* storage full / disabled — the draft just isn't persisted */
+  }
+}
+
+/** Load the persisted draft, or null if none / unreadable. */
+export function loadDraft(): StudioDraft | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { name?: unknown; config?: unknown };
+    return {
+      name: typeof parsed.name === "string" ? parsed.name : "Untitled theme",
+      config: deserializeConfig(parsed.config ?? parsed),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Clear the persisted draft (after it's been claimed into an account). */
+export function clearDraft(): void {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    /* nothing to do */
+  }
+}
+
 /** Deep-ish merge a partial config over DEFAULT_THEME so every field is present. */
 function mergeConfig(c: Partial<ThemeConfig>): ThemeConfig {
   return {

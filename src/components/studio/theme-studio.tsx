@@ -46,7 +46,12 @@ import {
   isStylesheetUrl,
 } from "@/lib/studio/google-font-loader";
 import { FontPicker } from "@/components/studio/font-picker";
-import type { StudioDesignSystem } from "@/lib/studio/persist";
+import {
+  saveDraft,
+  loadDraft,
+  clearDraft,
+  type StudioDesignSystem,
+} from "@/lib/studio/persist";
 import {
   listStudioDesignSystems,
   getStudioConfig,
@@ -196,6 +201,10 @@ export function ThemeStudio({
   // Key of the last-persisted (name, config) so autosave only fires on real changes.
   const lastSaved = useRef(snapshotKey("Untitled theme", DEFAULT_THEME));
   const didInit = useRef(false);
+  // Gate draft-autosave until the mount effect has restored any stored draft —
+  // otherwise the autosave timer clobbers the saved draft with the initial
+  // default before restore gets to read it.
+  const [hydrated, setHydrated] = useState(false);
 
   const refreshSystems = useCallback(async () => {
     try {
@@ -205,7 +214,11 @@ export function ThemeStudio({
     }
   }, []);
 
-  // On mount, open the most-recently-edited theme so edits autosave into it.
+  // On mount: restore/claim any local draft and open the right theme.
+  //  - Anonymous: restore the localStorage draft into the editor (stays a draft).
+  //  - Signed in with a draft and no saved systems: claim-on-signup — migrate the
+  //    draft into a first design system so nothing is lost crossing sign-in.
+  //  - Signed in with systems: open the most-recently-edited one (autosaves into it).
   useEffect(() => {
     (async () => {
       let list: StudioDesignSystem[] = [];
@@ -217,15 +230,62 @@ export function ThemeStudio({
       setSystems(list);
       if (didInit.current) return;
       didInit.current = true;
-      if (list.length === 0) return;
-      const res = await getStudioConfig(list[0].id);
-      if ("error" in res) return;
-      load(res.config);
-      setCurrentId(list[0].id);
-      setName(res.name);
-      lastSaved.current = snapshotKey(res.name, res.config);
+
+      try {
+        const draft = loadDraft();
+
+        if (entitlements.authenticated) {
+          if (list.length === 0 && draft) {
+            // Claim-on-signup.
+            const res = await createStudioDesignSystem(draft.name, draft.config);
+            if ("id" in res) {
+              clearDraft();
+              load(draft.config);
+              setName(draft.name);
+              setCurrentId(res.id);
+              lastSaved.current = snapshotKey(draft.name, draft.config);
+              refreshSystems();
+              return;
+            }
+            // Claim failed (e.g. at the plan cap): keep the draft and restore it.
+            load(draft.config);
+            setName(draft.name);
+            return;
+          }
+          if (list.length > 0) {
+            const res = await getStudioConfig(list[0].id);
+            if ("error" in res) return;
+            load(res.config);
+            setCurrentId(list[0].id);
+            setName(res.name);
+            lastSaved.current = snapshotKey(res.name, res.config);
+            return;
+          }
+          // Signed in, no systems, no draft — start from the default theme.
+          return;
+        }
+
+        // Anonymous: restore the local draft, if any.
+        if (draft) {
+          load(draft.config);
+          setName(draft.name);
+        }
+      } finally {
+        // Restore is done — draft-autosave may now run without clobbering it.
+        setHydrated(true);
+      }
     })();
-  }, [load]);
+  }, [load, entitlements.authenticated, refreshSystems]);
+
+  // Persist the working draft to localStorage whenever it isn't backed by a
+  // saved design system, so refresh / navigate-away / return never loses it.
+  // Gated on `hydrated` so it can't overwrite the stored draft before the mount
+  // effect has restored it. Saved themes autosave to the DB instead (below).
+  useEffect(() => {
+    if (!hydrated || currentId) return;
+    const t = setTimeout(() => saveDraft(name, config), 500);
+    return () => clearTimeout(t);
+  }, [hydrated, name, config, currentId]);
 
   // Debounced autosave for the loaded theme — renames + edits persist with no
   // Save button.
@@ -280,6 +340,32 @@ export function ThemeStudio({
     setView("studio");
     setSave({ state: "idle" });
     refreshSystems();
+  }
+
+  // Save the current unsaved draft into the signed-in user's account as a new
+  // design system, then keep autosaving into it. At the plan cap this surfaces
+  // the upgrade nudge instead. Anonymous users see "Sign in to save" instead.
+  async function saveDraftToAccount() {
+    setSave({ state: "saving" });
+    const res = await createStudioDesignSystem(name, config);
+    if ("error" in res) {
+      if (res.code === "limit") {
+        setSave({ state: "idle" });
+        setLimitOpen(true);
+      } else {
+        setSave({ state: "error", message: res.error });
+      }
+      return;
+    }
+    clearDraft();
+    setCurrentId(res.id);
+    lastSaved.current = snapshotKey(name, config);
+    setSave({ state: "saved" });
+    refreshSystems();
+    setTimeout(
+      () => setSave((s) => (s.state === "saved" ? { state: "idle" } : s)),
+      1200
+    );
   }
 
   // Reset to defaults (undoable). `keepBrand` preserves the primary & secondary
@@ -346,6 +432,37 @@ export function ThemeStudio({
             <span className="max-w-56 truncate text-xs text-destructive">
               {save.message}
             </span>
+          ) : !currentId ? (
+            // Draft mode — not backed by a saved design system yet.
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {save.state === "saving"
+                  ? "Saving…"
+                  : "Draft — not saved to your account"}
+              </span>
+              {entitlements.authenticated ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={saveDraftToAccount}
+                  disabled={save.state === "saving"}
+                >
+                  Save to account
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    // Persist the draft before leaving so sign-in can claim it.
+                    saveDraft(name, config);
+                    window.location.assign("/login");
+                  }}
+                >
+                  Sign in to save
+                </Button>
+              )}
+            </div>
           ) : (
             <span className="text-xs text-muted-foreground">
               {save.state === "saving"
