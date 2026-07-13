@@ -19,10 +19,12 @@ import {
   SlidersHorizontal,
   ChevronDown,
   Plus,
+  Server,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { UserMenu } from "@/components/user-menu";
+import { McpPanel } from "@/components/studio/mcp-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -161,7 +163,7 @@ export function ThemeStudio({ userEmail }: { userEmail?: string }) {
   const { config, commit, undo, load, canUndo } = useThemeHistory(DEFAULT_THEME);
   const [nav, setNav] = useState<NavKey>("color");
   const [mode, setMode] = useState<"light" | "dark">("light");
-  const [view, setView] = useState<"studio" | "io">("studio");
+  const [view, setView] = useState<"studio" | "io" | "mcp">("studio");
   const [resetOpen, setResetOpen] = useState(false);
 
   // Persistence: the loaded design system, its name, the switcher list, the
@@ -395,6 +397,12 @@ export function ThemeStudio({ userEmail }: { userEmail?: string }) {
               onClick={() => setView("io")}
             />
             <NavItem
+              icon={Server}
+              label="MCP endpoint"
+              active={view === "mcp"}
+              onClick={() => setView("mcp")}
+            />
+            <NavItem
               icon={RotateCcw}
               label="Reset all"
               onClick={() => setResetOpen(true)}
@@ -403,8 +411,10 @@ export function ThemeStudio({ userEmail }: { userEmail?: string }) {
           </div>
         </nav>
 
-        {/* Content area — swaps between the token editor+preview and import/export */}
-        {view === "io" ? (
+        {/* Content area — swaps between the token editor+preview, import/export, and MCP handoff */}
+        {view === "mcp" ? (
+          <McpPanel designSystemId={currentId} />
+        ) : view === "io" ? (
           <ImportExportPanel config={config} theme={theme} commit={commit} />
         ) : (
           <div className="grid min-h-0 flex-1 grid-cols-[320px_1fr]">
