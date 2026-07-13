@@ -33,7 +33,7 @@ FREEMIUM-GATING-PLAN.md (access model).*
 
 ## Build sequence
 
-### Phase 1 — Finish gating enforcement (small)
+### Phase 1 — Finish gating enforcement (small) ✅ DONE (commit a6663eb)
 Completes build #3. Until this lands, free and paid are identical except MCP.
 - Enforce `canExport` in the studio Export panel: free users can see individual
   values in-editor but cannot download files or bulk-copy. Gate the export
@@ -43,15 +43,23 @@ Completes build #3. Until this lands, free and paid are identical except MCP.
 - Server-side is the source of truth (never trust the client); mirror in the UI
   for affordance.
 
-### Phase 2 — Don't-lose-work funnel (medium)
+### Phase 2 — Don't-lose-work funnel (medium) ✅ DONE (commit e7891f3)
 Build #4. The public-studio funnel only converts if crossing signup never loses
 work.
-- localStorage autosave of the anonymous draft (editor config).
-- "Draft — not saved to your account" header status + "Sign in to save" CTA;
-  `beforeunload` confirm as a safety net only.
-- **Claim-on-signup:** on first authenticated load, if a localStorage draft
-  exists and the account has no systems, migrate it in via
-  `createStudioDesignSystem` (+ translator) and clear the draft.
+- ✅ localStorage autosave of the anonymous draft (editor config), with restore
+  on load (gated behind a `hydrated` flag so autosave can't clobber the stored
+  draft before restore reads it).
+- ✅ "Draft — not saved to your account" header status + CTA ("Sign in to save"
+  anon / "Save to account" signed-in).
+- ✅ **Claim-on-signup:** first authenticated load with a draft and no systems
+  migrates it into the account and clears the draft.
+- **Deferred `beforeunload`:** intentionally NOT added — localStorage
+  autosave+restore already makes refresh/close/return lossless, so a
+  `beforeunload` prompt would be a false alarm (work is safe). Revisit in 2B if
+  a prompt is still wanted for the clear-browser-data / different-device case.
+- **Known UX nits for 2B:** the draft header status text wraps awkwardly at the
+  current width; claim-on-signup / "Save to account" still need a signed-in
+  live check (phase 5).
 
 ### Phase 3 — Monetization / Stripe (medium-large)
 Build #5. The hard launch blocker.
