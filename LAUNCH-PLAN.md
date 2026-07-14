@@ -85,7 +85,17 @@ Build #5. The hard launch blocker.
 - Ops: terms/privacy, OG/meta, analytics, error/empty states.
 
 ### Phase 5 — Deploy & smoke-test the full funnel
-- Deploy to Vercel prod; set Stripe webhook endpoint + env in prod.
+- ✅ Deployed to Vercel prod (GitHub `swellben/toknhost` → auto-deploy on `main`),
+  live at **https://tokn.host** (apex canonical, `www` → 308 → apex via proxy;
+  valid Let's Encrypt SSL). Env vars set in Vercel.
+- Google/GitHub OAuth: GitHub app configured; Google app configured (Client
+  ID/secret in Supabase). Supabase Site URL + redirect allowlist point at
+  `https://tokn.host`.
+- **⚠️ Pre-launch gate — Publish the Google OAuth consent screen** (Testing →
+  In Production) when closer to launch. Until then only added Test users can
+  sign in with Google. Basic scopes (email/profile/openid) need no Google
+  verification review, so publishing is a one-click step.
+- Still TODO: set Stripe webhook endpoint + env in prod (Phase 3).
 - End-to-end: anonymous design → signup (trial) → live MCP URL → agent consumes
   tokens → simulate trial-end → upgrade via Stripe → paid → still works →
   cancel → downgraded to free.
