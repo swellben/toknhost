@@ -19,6 +19,18 @@ const PUBLIC_PATHS = ["/login", "/auth", "/api", "/studio"];
  * `proxy.ts`, but the underlying logic lives here for organization).
  */
 export async function updateSession(request: NextRequest) {
+  // Canonical host: redirect the www subdomain to the bare apex (tokn.host is
+  // canonical). Done here rather than via Vercel's domain-redirect UI so it's
+  // reliable and version-controlled. Preserves path + query; 308 keeps method.
+  const host = request.headers.get("host") ?? "";
+  if (host.startsWith("www.")) {
+    const apex = host.slice(4);
+    return NextResponse.redirect(
+      `https://${apex}${request.nextUrl.pathname}${request.nextUrl.search}`,
+      308
+    );
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(
