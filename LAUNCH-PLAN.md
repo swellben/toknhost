@@ -90,8 +90,10 @@ Build #5. The hard launch blocker.
 - Read Stripe's current docs before coding — do not trust memorized API shapes.
 
 ### Phase 4 — Landing surface & polish (medium)
-- Minimal landing at `/` (hero, embedded demo video, pricing, CTA to studio).
-  Move the `/` → `/studio` redirect behind the landing.
+- ✅ Landing page at `/` — hero + mock MCP-handoff visual, 3-step how-it-works,
+  feature grid, Free vs $12 Pro pricing, FAQ, CTAs (signed-in → studio, else →
+  login). Replaces the `/` → `/studio` redirect. (A demo video/GIF can drop into
+  the hero later.)
 - Export formats (slice of #6): downloadable files for the frameworks the MCP
   already serves (tailwind-v4, shadcn, css-variables), gated by `canExport`.
 - Ops: terms/privacy, OG/meta, analytics, error/empty states.
