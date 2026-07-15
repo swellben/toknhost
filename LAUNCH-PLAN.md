@@ -9,14 +9,26 @@ FREEMIUM-GATING-PLAN.md (access model).*
 - **Billing = Stripe**, with **Stripe Tax** enabled so VAT/sales-tax is
   collected/computed automatically (Stripe is not merchant-of-record, so we owe
   the returns, but Stripe Tax handles the math + registration prompts).
-- **Launch surface = studio-as-funnel + a minimal landing page.** `/` currently
-  just redirects to `/studio`; add a lightweight landing (hero, demo video,
-  pricing, CTA) and send `/studio` traffic there from the marketing side, while
-  keeping the studio itself the public top-of-funnel.
-- **Trial is app-managed, not Stripe-managed.** Signup grants 14 days via
-  `profiles.trial_ends_at` (migration 008). Stripe only enters when the trial
-  ends and the user subscribes — checkout creates a normal (non-trial)
-  subscription; the webhook flips `plan` to `paid`.
+- **Billing = Stripe**, Stripe Tax enabled (as above).
+
+### ⚠️ Access-model pivot (2026-07-14) — supersedes the two bullets that were here
+
+- **`/studio` is login-gated** (GitHub/Google one-click) — NO anonymous use.
+  `/` becomes a **public landing page** (hero, demo video, pricing, sign-in CTA);
+  now a launch blocker, not a nicety. (Infra note: prod is live at tokn.host with
+  working OAuth as of 2026-07-14.)
+- **Trial = Stripe-managed 7-day, CARD-UPFRONT**, auto-charges at day 7, opt-in
+  via checkout (not auto-granted on signup). This **replaces** the app-managed
+  14-day `trial_ends_at` reverse trial → **revert migration 008**; entitlements
+  read Stripe subscription status (`trialing`/`active` ⇒ paid).
+- **Entitlements unchanged:** free = 1 theme + full editor + in-editor use; paid =
+  MCP + export + unlimited themes. Phase 1 gating already enforces these.
+- **Phase 2 (anonymous draft + claim-on-signup) is now moot** — strip the
+  "Sign in to save" seam; a logged-in free user's one theme just autosaves.
+- **Re-sequenced remaining build:** (1) auth-gate studio + strip anonymous seam;
+  (2) Stripe card-trial + entitlements rework; (3) landing page; (4) polish +
+  deploy smoke test.
+- See `FREEMIUM-GATING-PLAN.md` → "Access model v2" for the full spec.
 
 ## Where we are
 

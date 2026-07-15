@@ -1,11 +1,36 @@
 # ToknHost Freemium & Access-Gating Plan
 
-*Written 2026-07-08. Grounded in the studio auth work landed this session, the
-conversion research below, and PIVOT-PLAN.md's persistence architecture.*
+*Written 2026-07-08.* ⚠️ **SUPERSEDED 2026-07-14 — see "Access model v2" below.**
+The original value-first / anonymous-studio model is replaced by a login-gated,
+card-upfront model. The gating *entitlements* (free = 1 theme + in-editor use;
+paid = MCP + export + multi-theme) are unchanged; what changed is **studio entry
+now requires an account** and the **trial is a Stripe-managed 7-day card-upfront
+trial** (opt-in), not an app-managed 14-day no-card reverse trial.
 
 ---
 
-## The decision in one line
+## Access model v2 (decided 2026-07-14)
+
+- **`/studio` requires a free account** (GitHub/Google one-click) — no anonymous
+  use. Rationale: dev audience finds OAuth near-frictionless; founder gets user
+  identity; removes the janky play-then-login seam.
+- **`/` is a landing page** (public) that sells + demos with a sign-in CTA — now a
+  **launch blocker**, since there's no try-before-signup to sell the product.
+- **Free account:** 1 theme, full editor, in-app use. No MCP, no export, no extra
+  themes (unchanged entitlements — Phase 1 gating already enforces this).
+- **Paid:** MCP + unlimited themes + export. **Trial = Stripe-managed 7-day free,
+  card required upfront**, auto-charges at day 7. Opt-in via checkout, NOT granted
+  automatically on signup. This replaces the app-managed `trial_ends_at` 14-day
+  reverse trial (migration 008 to be reverted; entitlements read Stripe
+  subscription status: `trialing`/`active` ⇒ paid).
+- **Consequence:** anonymous localStorage draft + claim-on-signup (Phase 2) is
+  moot; a logged-in free user's single theme just autosaves.
+
+The 2026-07-08 model below is kept for historical context / research notes.
+
+---
+
+## (Superseded) The 2026-07-08 decision in one line
 
 **The studio is open to anonymous users; the account + paywall gate the moment a
 user tries to _take value out_ (save to account, export files, connect MCP) — via
