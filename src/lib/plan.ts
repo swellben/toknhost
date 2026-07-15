@@ -1,22 +1,26 @@
 import { createClient } from "@/lib/supabase/server";
 
-// Central access model for the freemium/reverse-trial gating.
-// See FREEMIUM-GATING-PLAN.md. The studio itself is free + anonymous; the gates
-// here govern the value-extraction actions (save, export, MCP) and how many
-// design systems a user may keep.
+// Central access model for the gating. See FREEMIUM-GATING-PLAN.md ("Access
+// model v2"). The studio requires a free account; the gates here govern the
+// value-extraction actions (export, MCP) and how many themes a user may keep.
+// "Paid" is driven by the Stripe subscription (trialing/active), synced onto the
+// profile by the billing webhook — never by a client-supplied value.
 
 export type Plan = "free" | "paid";
+
+// Stripe subscription statuses that grant premium access. A card-upfront trial
+// is `trialing`; a paid subscription is `active`. Everything else (past_due,
+// canceled, unpaid, incomplete, …) is treated as free.
+const PAID_STATUSES = new Set(["trialing", "active"]);
 
 export type Entitlements = {
   /** Whether there's a signed-in user at all. */
   authenticated: boolean;
-  /** The stored billing plan on the profile. */
+  /** The stored billing plan on the profile (manual override; usually 'free'). */
   plan: Plan;
-  /** True while the 14-day reverse trial is still active. */
-  inTrial: boolean;
-  /** ISO timestamp the trial ends, or null if none/anonymous. */
-  trialEndsAt: string | null;
-  /** paid if the plan is paid OR the trial is still active. Drives the gates. */
+  /** Raw Stripe subscription status, or null if never subscribed/anonymous. */
+  subscriptionStatus: string | null;
+  /** paid if plan is 'paid' OR the Stripe subscription is trialing/active. */
   effectivePlan: Plan;
   /** Persist a design system to the account (any signed-in user). */
   canSave: boolean;
@@ -34,8 +38,7 @@ const PAID_MAX_DESIGN_SYSTEMS = Number.POSITIVE_INFINITY;
 const ANONYMOUS: Entitlements = {
   authenticated: false,
   plan: "free",
-  inTrial: false,
-  trialEndsAt: null,
+  subscriptionStatus: null,
   effectivePlan: "free",
   canSave: false,
   canExport: false,
@@ -45,9 +48,9 @@ const ANONYMOUS: Entitlements = {
 
 /**
  * Resolves the current request's entitlements from the signed-in user's
- * profile. Anonymous users get the locked-down anonymous set (studio only —
- * no save/export/MCP). Call this from server actions and server components that
- * gate premium features; never trust a client-supplied plan.
+ * profile. Anonymous callers get the locked-down set. Call this from server
+ * actions and server components that gate premium features; never trust a
+ * client-supplied plan.
  */
 export async function getEntitlements(): Promise<Entitlements> {
   const supabase = await createClient();
@@ -57,22 +60,21 @@ export async function getEntitlements(): Promise<Entitlements> {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("plan, trial_ends_at")
+    .select("plan, subscription_status")
     .eq("id", userId)
     .maybeSingle();
 
   const plan: Plan = profile?.plan === "paid" ? "paid" : "free";
-  const trialEndsAt = profile?.trial_ends_at ?? null;
-  const inTrial =
-    trialEndsAt !== null && new Date(trialEndsAt).getTime() > Date.now();
-  const effectivePlan: Plan = plan === "paid" || inTrial ? "paid" : "free";
+  const subscriptionStatus = profile?.subscription_status ?? null;
+  const subscribed =
+    subscriptionStatus !== null && PAID_STATUSES.has(subscriptionStatus);
+  const effectivePlan: Plan = plan === "paid" || subscribed ? "paid" : "free";
   const premium = effectivePlan === "paid";
 
   return {
     authenticated: true,
     plan,
-    inTrial,
-    trialEndsAt,
+    subscriptionStatus,
     effectivePlan,
     canSave: true,
     canExport: premium,

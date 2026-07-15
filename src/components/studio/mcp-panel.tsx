@@ -69,7 +69,7 @@ export function McpPanel({ designSystemId }: { designSystemId: string | null }) 
         ) : current.status === "error" ? (
           <p className="text-sm text-destructive">{current.message}</p>
         ) : current.status === "locked" ? (
-          <LockedState trialEnded={current.trialEnded} />
+          <LockedState />
         ) : (
           <ConnectionCard designSystemId={designSystemId} access={current} />
         )}
@@ -88,17 +88,17 @@ function EmptyState() {
   );
 }
 
-function LockedState({ trialEnded }: { trialEnded: boolean }) {
+function LockedState() {
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-6">
       <p className="text-sm font-medium">MCP access is a premium feature</p>
       <p className="text-sm text-muted-foreground">
-        {trialEnded
-          ? "Your trial has ended. Upgrade to keep serving this design system to your AI agents over MCP."
-          : "Upgrade your plan to serve this design system to your AI agents over MCP."}
+        Start your 7-day free trial to serve this design system to your AI
+        agents over a live MCP endpoint.
       </p>
+      {/* Wired to Stripe checkout next (LAUNCH-PLAN.md Phase 3, step 5). */}
       <Button type="button" size="sm" className="w-fit" disabled>
-        Upgrade (coming soon)
+        Start free trial
       </Button>
     </div>
   );

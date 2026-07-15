@@ -23,7 +23,7 @@ export type StudioMcpAccess =
       defaultFramework: string;
       modeNames: string[];
     }
-  | { status: "locked"; trialEnded: boolean }
+  | { status: "locked" }
   | { status: "error"; message: string };
 
 /**
@@ -38,10 +38,7 @@ export async function getStudioMcpAccess(
 ): Promise<StudioMcpAccess> {
   const entitlements = await getEntitlements();
   if (!entitlements.canUseMcp) {
-    // An active trial is entitled (canUseMcp true), so a lock means the trial
-    // has ended (had a date, now past) or the account never had one.
-    const trialEnded = entitlements.trialEndsAt !== null && !entitlements.inTrial;
-    return { status: "locked", trialEnded };
+    return { status: "locked" };
   }
 
   const supabase = await createClient();
