@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { UserMenu } from "@/components/user-menu";
 import { McpPanel } from "@/components/studio/mcp-panel";
+import { UpgradeButton } from "@/components/billing/upgrade-button";
 import type { Entitlements } from "@/lib/plan";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -383,7 +384,10 @@ export function ThemeStudio({
           {userEmail && (
             <>
               <div className="mx-1 h-4 w-px bg-border" />
-              <UserMenu email={userEmail} />
+              <UserMenu
+                email={userEmail}
+                showManageBilling={entitlements.subscriptionStatus !== null}
+              />
             </>
           )}
         </div>
@@ -521,8 +525,7 @@ function UpgradeLimitDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
-          {/* Wired to Stripe checkout in Phase 3 (LAUNCH-PLAN.md). */}
-          <Button disabled>Upgrade (coming soon)</Button>
+          <UpgradeButton label="Start free trial" />
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1889,10 +1892,7 @@ function ImportExportPanel({
                 Upgrade to copy or download your theme.css and other framework
                 formats. You can keep editing and previewing for free.
               </p>
-              {/* Wired to Stripe checkout in Phase 3 (LAUNCH-PLAN.md). */}
-              <Button size="sm" className="mt-1" disabled>
-                Upgrade (coming soon)
-              </Button>
+              <UpgradeButton label="Start free trial" className="mt-1" />
             </div>
           )}
         </section>

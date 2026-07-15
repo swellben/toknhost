@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { logout } from "@/app/login/actions";
+import { openBillingPortal } from "@/app/billing/actions";
 
 function initialsOf(email: string): string {
   const local = email.split("@")[0] ?? email;
@@ -11,8 +12,16 @@ function initialsOf(email: string): string {
   return letters.toUpperCase();
 }
 
-export function UserMenu({ email }: { email: string }) {
+export function UserMenu({
+  email,
+  showManageBilling = false,
+}: {
+  email: string;
+  /** Show "Manage billing" — only for users who've been through checkout. */
+  showManageBilling?: boolean;
+}) {
   const [open, setOpen] = useState(false);
+  const [portalPending, startPortal] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,6 +55,16 @@ export function UserMenu({ email }: { email: string }) {
           >
             Settings
           </Link>
+          {showManageBilling && (
+            <button
+              type="button"
+              disabled={portalPending}
+              onClick={() => startPortal(async () => void (await openBillingPortal()))}
+              className="block w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+            >
+              {portalPending ? "Opening…" : "Manage billing"}
+            </button>
+          )}
           <form action={logout}>
             <button
               type="submit"

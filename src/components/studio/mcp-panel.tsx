@@ -7,6 +7,7 @@ import {
   type StudioMcpAccess,
 } from "@/app/studio/mcp-actions";
 import { Button } from "@/components/ui/button";
+import { UpgradeButton } from "@/components/billing/upgrade-button";
 
 // Mirrors the `framework` enum exposed by the MCP server's get_tokens/
 // get_theme tools and its GET ?framework= route — see
@@ -96,10 +97,7 @@ function LockedState() {
         Start your 7-day free trial to serve this design system to your AI
         agents over a live MCP endpoint.
       </p>
-      {/* Wired to Stripe checkout next (LAUNCH-PLAN.md Phase 3, step 5). */}
-      <Button type="button" size="sm" className="w-fit" disabled>
-        Start free trial
-      </Button>
+      <UpgradeButton label="Start free trial" className="mt-1" />
     </div>
   );
 }
