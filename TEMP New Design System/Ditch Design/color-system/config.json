@@ -1,0 +1,6 @@
+{
+  "about": "Which theme and adapter this project uses. Swap either to re-theme or to move to another design system.",
+  "theme": "themes/ditch.json",
+  "adapter": "adapters/shadcn.json",
+  "baseline": "baseline.json"
+}

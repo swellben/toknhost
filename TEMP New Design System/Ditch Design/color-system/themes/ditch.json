@@ -1,0 +1,195 @@
+{
+  "$schema": "../schema/theme.schema.json",
+  "name": "Ditch",
+  "about": "Values for the Ditch theme: a palette, and which palette step fills each role slot in each mode. The only file with color values.",
+  "palette": {
+    "white": "#FFFFFF",
+    "indigo-50": "#F4F4FE",
+    "indigo-100": "#E9E9FF",
+    "indigo-200": "#D4D5FE",
+    "indigo-300": "#B9B9FF",
+    "indigo-400": "#9690FF",
+    "indigo-500": "#7873F8",
+    "indigo-600": "#5A54F0",
+    "indigo-700": "#4742C5",
+    "indigo-800": "#37329C",
+    "indigo-900": "#282478",
+    "indigo-950": "#1A1755",
+    "cyan-50": "#E0F6FF",
+    "cyan-100": "#C8EFFF",
+    "cyan-200": "#98E2FF",
+    "cyan-300": "#5CC8EE",
+    "cyan-400": "#00BEEB",
+    "cyan-500": "#0796C4",
+    "cyan-600": "#00739F",
+    "cyan-700": "#025F84",
+    "cyan-800": "#004967",
+    "cyan-900": "#01354C",
+    "cyan-950": "#012334",
+    "green-50": "#DAFDE8",
+    "green-100": "#BEF9D8",
+    "green-200": "#97EDBF",
+    "green-300": "#6FD3A0",
+    "green-400": "#49BB80",
+    "green-500": "#12A35F",
+    "green-600": "#0C8852",
+    "green-700": "#0A6E44",
+    "green-800": "#035533",
+    "green-900": "#023F25",
+    "green-950": "#002B17",
+    "amber-50": "#FFF4E5",
+    "amber-100": "#FFE9C7",
+    "amber-200": "#FFD28C",
+    "amber-300": "#E8B86A",
+    "amber-400": "#F5A623",
+    "amber-500": "#D28818",
+    "amber-600": "#AF6B0B",
+    "amber-700": "#8C5000",
+    "amber-800": "#6A3B00",
+    "amber-900": "#502C01",
+    "amber-950": "#381D00",
+    "red-50": "#FEFAFA",
+    "red-100": "#FEEDEB",
+    "red-200": "#FED3D0",
+    "red-300": "#FFAEA9",
+    "red-400": "#F08A85",
+    "red-500": "#E5484D",
+    "red-600": "#B42A26",
+    "red-700": "#9A1E1C",
+    "red-800": "#791312",
+    "red-900": "#5B0A0A",
+    "red-950": "#3E0404",
+    "navy-50": "#F6F8FB",
+    "navy-100": "#F0F3F8",
+    "navy-200": "#E3E8EF",
+    "navy-300": "#C3CBD5",
+    "navy-400": "#A4AEBC",
+    "navy-500": "#8692A3",
+    "navy-600": "#6A778B",
+    "navy-700": "#4E5D73",
+    "navy-800": "#384962",
+    "navy-900": "#233652",
+    "navy-950": "#0F2342",
+    "gray-50": "#F0F5FC",
+    "gray-100": "#E4E8EE",
+    "gray-200": "#CBD1DA",
+    "gray-300": "#B2BAC6",
+    "gray-400": "#9AA3B2",
+    "gray-500": "#777F8D",
+    "gray-600": "#555C69",
+    "gray-700": "#363C47",
+    "gray-800": "#2A2F38",
+    "gray-900": "#22262E",
+    "gray-950": "#1A1D23"
+  },
+  "roles": {
+    "light": {
+      "anchor": {
+        "text": "navy-950",
+        "text-muted": "navy-700"
+      },
+      "foundation": {
+        "page": "navy-50",
+        "raised": "white",
+        "sunken": "navy-100",
+        "line": "navy-200",
+        "line-strong": "navy-200"
+      },
+      "action": {
+        "base": "indigo-600",
+        "on": "white"
+      },
+      "partner": {
+        "base": "cyan-500",
+        "on": "navy-950",
+        "ink": "cyan-600"
+      },
+      "status.success": {
+        "base": "green-500",
+        "on": "navy-950",
+        "ink": "green-700"
+      },
+      "status.warning": {
+        "base": "amber-400",
+        "on": "navy-950",
+        "ink": "amber-700"
+      },
+      "status.info": {
+        "base": "cyan-500",
+        "on": "navy-950",
+        "ink": "cyan-600"
+      },
+      "status.error": {
+        "base": "red-500",
+        "strong": "red-600",
+        "on": "white",
+        "ink": "red-600"
+      },
+      "data": {
+        "series-1": "indigo-600",
+        "series-2": "cyan-500",
+        "series-3": "green-500",
+        "series-4": "amber-400",
+        "series-5": "red-500"
+      },
+      "brand": {
+        "mark": "cyan-400",
+        "mark-strong": "cyan-500"
+      }
+    },
+    "dark": {
+      "anchor": {
+        "text": "gray-100",
+        "text-muted": "gray-400"
+      },
+      "foundation": {
+        "page": "gray-950",
+        "raised": "gray-900",
+        "sunken": "gray-800",
+        "line": "gray-700",
+        "line-strong": "gray-700"
+      },
+      "action": {
+        "base": "indigo-400",
+        "on": "gray-950"
+      },
+      "partner": {
+        "base": "cyan-300",
+        "on": "gray-950",
+        "ink": "cyan-300"
+      },
+      "status.success": {
+        "base": "green-300",
+        "on": "gray-950",
+        "ink": "green-300"
+      },
+      "status.warning": {
+        "base": "amber-300",
+        "on": "gray-950",
+        "ink": "amber-300"
+      },
+      "status.info": {
+        "base": "cyan-300",
+        "on": "gray-950",
+        "ink": "cyan-300"
+      },
+      "status.error": {
+        "base": "red-400",
+        "strong": "red-400",
+        "on": "gray-950",
+        "ink": "red-400"
+      },
+      "data": {
+        "series-1": "indigo-400",
+        "series-2": "cyan-300",
+        "series-3": "green-300",
+        "series-4": "amber-300",
+        "series-5": "red-400"
+      },
+      "brand": {
+        "mark": "cyan-400",
+        "mark-strong": "cyan-500"
+      }
+    }
+  }
+}

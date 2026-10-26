@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Color system theme (values only)",
+  "type": "object",
+  "required": ["name", "palette", "roles"],
+  "properties": {
+    "name": { "type": "string" },
+    "palette": { "type": "object", "additionalProperties": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" } },
+    "roles": { "type": "object", "description": "mode -> role -> slot -> palette step key", "additionalProperties": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": { "type": "string" } } } }
+  }
+}

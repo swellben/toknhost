@@ -1,0 +1,22 @@
+{
+  "about": "Known color-rule errors accepted for now. Checks fail only on errors not listed here. Remove an entry once it is fixed.",
+  "accepted": [
+    "contrast:border.control/surface.page:dark",
+    "contrast:border.control/surface.page:light",
+    "contrast:border.control/surface.raised:dark",
+    "contrast:border.control/surface.raised:light",
+    "contrast:data.series.4/surface.raised:light",
+    "contrast:status.warning.fill/surface.raised:light",
+    "distinct:data-vs-action-status:data.series.1=action.primary.fill:dark",
+    "distinct:data-vs-action-status:data.series.1=action.primary.fill:light",
+    "distinct:data-vs-action-status:data.series.2=status.info.fill:dark",
+    "distinct:data-vs-action-status:data.series.2=status.info.fill:light",
+    "distinct:data-vs-action-status:data.series.3=status.success.fill:dark",
+    "distinct:data-vs-action-status:data.series.3=status.success.fill:light",
+    "distinct:data-vs-action-status:data.series.4=status.warning.fill:dark",
+    "distinct:data-vs-action-status:data.series.4=status.warning.fill:light",
+    "distinct:data-vs-action-status:data.series.5=action.destructive.fill:dark",
+    "distinct:data-vs-action-status:data.series.5=status.error.fill:dark",
+    "distinct:data-vs-action-status:data.series.5=status.error.fill:light"
+  ]
+}

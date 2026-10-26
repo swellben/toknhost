@@ -1,0 +1,127 @@
+{
+  "$schema": "./schema/rules.schema.json",
+  "version": 1,
+  "about": "Color rules for any design system. Names roles, slots and intents only: no color values (those live in themes/) and no library token names (those live in adapters/).",
+
+  "modes": ["light", "dark"],
+
+  "roles": {
+    "anchor": { "slots": ["text", "text-muted"] },
+    "foundation": { "slots": ["page", "raised", "sunken", "line", "line-strong"] },
+    "action": { "slots": ["base", "on"] },
+    "partner": { "slots": ["base", "on", "ink"] },
+    "status.success": { "slots": ["base", "on", "ink"] },
+    "status.warning": { "slots": ["base", "on", "ink"] },
+    "status.info": { "slots": ["base", "on", "ink"] },
+    "status.error": { "slots": ["base", "strong", "on", "ink"] },
+    "data": { "slots": ["series-1", "series-2", "series-3", "series-4", "series-5"] },
+    "brand": { "slots": ["mark", "mark-strong"] }
+  },
+
+  "intents": {
+    "text.default": "anchor.text",
+    "text.muted": "anchor.text-muted",
+
+    "surface.page": "foundation.page",
+    "surface.raised": "foundation.raised",
+    "surface.subtle": "foundation.sunken",
+    "border.divider": "foundation.line",
+    "border.control": "foundation.line-strong",
+
+    "action.primary.fill": "action.base",
+    "action.primary.label": "action.on",
+    "focus.ring": "action.base",
+    "action.destructive.fill": "status.error.strong",
+    "action.destructive.label": "status.error.on",
+
+    "brand.accent.fill": "partner.base",
+    "brand.accent.label": "partner.on",
+    "brand.accent.text": "partner.ink",
+    "brand.mark.primary": "brand.mark",
+    "brand.mark.secondary": "brand.mark-strong",
+    "brand.wordmark": "anchor.text",
+
+    "status.success.fill": "status.success.base",
+    "status.success.label": "status.success.on",
+    "status.success.text": "status.success.ink",
+    "status.warning.fill": "status.warning.base",
+    "status.warning.label": "status.warning.on",
+    "status.warning.text": "status.warning.ink",
+    "status.info.fill": "status.info.base",
+    "status.info.label": "status.info.on",
+    "status.info.text": "status.info.ink",
+    "status.error.fill": "status.error.base",
+    "status.error.text": "status.error.ink",
+
+    "data.series.1": "data.series-1",
+    "data.series.2": "data.series-2",
+    "data.series.3": "data.series-3",
+    "data.series.4": "data.series-4",
+    "data.series.5": "data.series-5"
+  },
+
+  "constraints": {
+    "layering": {
+      "about": "Themes map role slots to palette steps. Adapters map library tokens to intents. Components use library tokens only: never palette steps, role slots or color literals.",
+      "componentsUseIntentsOnly": true
+    },
+
+    "roleAccess": {
+      "about": "Which intents may draw on a role. An intent that points at a role outside its list is an error.",
+      "action": ["action.primary.*", "focus.ring"],
+      "status.*": ["status.*", "action.destructive.*"],
+      "data": ["data.series.*"],
+      "brand": ["brand.mark.*"]
+    },
+
+    "intentScopes": {
+      "about": "Where an intent may be used, by component kind (kinds are defined per adapter). Intents not listed may be used anywhere.",
+      "action.primary.*": ["action"],
+      "data.series.*": ["data-viz"],
+      "brand.mark.*": ["brand"],
+      "brand.wordmark": ["brand"]
+    },
+
+    "distinct": [
+      {
+        "id": "data-vs-action-status",
+        "subject": "data.series.*",
+        "mustDifferFrom": ["action.primary.fill", "action.destructive.fill", "status.*.fill"],
+        "severity": "error",
+        "about": "A data series must not resolve to the same color as an action or a status, or charts read as buttons or alerts."
+      },
+      {
+        "id": "partner-vs-info",
+        "subject": "brand.accent.fill",
+        "mustDifferFrom": ["status.info.fill"],
+        "severity": "warning",
+        "about": "The brand accent and the info status should be distinguishable."
+      }
+    ],
+
+    "contrast": [
+      { "fg": "text.default", "bg": ["surface.page", "surface.raised", "surface.subtle"], "min": 4.5 },
+      { "fg": "text.muted", "bg": ["surface.page", "surface.raised", "surface.subtle"], "min": 4.5 },
+      { "fg": "action.primary.label", "bg": ["action.primary.fill"], "min": 4.5 },
+      { "fg": "action.destructive.label", "bg": ["action.destructive.fill"], "min": 4.5 },
+      { "fg": "action.primary.fill", "bg": ["surface.page", "surface.raised"], "min": 3 },
+      { "fg": "focus.ring", "bg": ["surface.page", "surface.raised"], "min": 3 },
+      { "fg": "border.control", "bg": ["surface.page", "surface.raised"], "min": 3 },
+      { "fg": "brand.accent.text", "bg": ["surface.page", "surface.raised"], "min": 4.5 },
+      { "fg": "brand.accent.label", "bg": ["brand.accent.fill"], "min": 4.5 },
+      { "fg": "status.*.text", "bg": ["surface.page", "surface.raised"], "min": 4.5 },
+      { "fg": "status.*.label", "bg": ["status.*.fill"], "min": 4.5, "pair": "same-status" },
+      { "fg": "status.*.fill", "bg": ["surface.raised"], "min": 3 },
+      { "fg": "data.series.*", "bg": ["surface.raised"], "min": 3 },
+      { "fg": "brand.wordmark", "bg": ["surface.page"], "min": 4.5 }
+    ],
+
+    "budget": {
+      "about": "Target share of color attention per role. Advisory: reported, never fails a check.",
+      "enforcement": "advisory",
+      "anchor": 60,
+      "partner": 30,
+      "action": 10
+    }
+  }
+}
