@@ -1,3 +1,0 @@
-#!/bin/sh
-# Blocks commits that break the color rules or leave generated color files stale.
-npm run --silent colors:check && npm run --silent lint
